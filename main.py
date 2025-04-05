@@ -23,7 +23,7 @@ if __name__ == '__main__':
     square_size = 50
     square_x, square_y = (WIDTH - square_size) // 2, (HEIGHT - square_size) // 2  # Centered
 
-    world = terrain.Terrain(background, (100, 100))
+    world = terrain.Terrain(background, (50, 50))
     world.camera_fit_view()
 
     # Main loop

@@ -2,7 +2,7 @@ import random
 import pygame
 import numpy as np
 import world_properties
-from copy import deepcopy
+import vegetation
 
 height_direction = [np.cos(np.deg2rad(210)),
                     np.sin(np.deg2rad(210))]  # with the height increase tile is move towards this vector
@@ -183,6 +183,8 @@ class Water:
                                  (x_min + line[0] * width, y_min + line[2] * width),
                                  (x_min + line[1] * width, y_min + line[2] * width), line[3])
 
+
+
 class Tile:
 
     def __init__(self, surrounding_tiles: list[list[...]]):
@@ -193,6 +195,8 @@ class Tile:
         self.water = Water(self)
         self.content_list: list = []
         self.modifiers = []
+        self.vegetation = {}
+        self.nutrition = 0
         flattened_tiles = [item for sublist in surrounding_tiles if sublist is not None for item in sublist if item is not None]
 
         # purely random tile
@@ -210,6 +214,7 @@ class Tile:
             self.content_list.append([key, tile_content[key]])
         for content in self.content_list:
             content[1] /= sum_content  # normalizing total content to [0, 1]
+            self.nutrition += content[1] * world_properties.soil_types[content[0]]["nutritional value"]
 
         for generation_property in world_properties.world_generation_properties["generation probabilities"]:
             if random.random() < generation_property[1]:
@@ -218,6 +223,12 @@ class Tile:
                                                  Water.MIN_SOURCE_OUTPUT)
                     self.water.add_water_source(water_source_intensity)
                     self.modifiers.append([generation_property[0], water_source_intensity])   # second element is generating speed
+                elif generation_property[0] == "grass":
+                    if not "grass" in self.vegetation:
+                        self.vegetation["grass"] = vegetation.Grass(self)
+
+                    self.vegetation["grass"].plant(self)
+
                 print("added ", generation_property[0])
 
     def prepare_step(self, surrounding_tiles: list[list[...]]):
@@ -225,6 +236,8 @@ class Tile:
                            item is not None]
 
         self.water.prepare_step(flattened_tiles)
+        for plant in self.vegetation.values():
+            plant.prepare_step(flattened_tiles)
 
         # flow_out_cnt = 1
         # for tile in flattened_tiles:
@@ -239,12 +252,17 @@ class Tile:
         #         self.flow_out += single_tile_flow_rate_out
 
     def step(self, surrounding_tiles: list[list[...]], update_visuals=False):
+        flattened_tiles = [item for sublist in surrounding_tiles if sublist is not None for item in sublist if
+                           item is not None]
+
         for modifier in self.modifiers:
             pass
             # water is processed automatically inside of Water class
             # if modifier[0] == "water source":
             #     self.moisture_level += modifier[1]
         self.water.step(update_visuals)
+        for plant in self.vegetation.values():
+            plant.step(update_visuals, flattened_tiles)
 
     def draw(self, screen, pos, width):
         height_scale = width * 0.5
@@ -261,6 +279,11 @@ class Tile:
                 pygame.draw.circle(screen, (0, 0, 200, 200),
                                    (height_pos[0] + width/2, height_pos[1] + width/2),
                                    radius)
+
+
         self.water.draw(screen, pos, width, height_scale, height_pos)
+        for plant in self.vegetation.values():  # iteration is due to multiple kinds of plants
+            plant.draw(screen, pos, width, height_scale, height_pos)
+
 
 
