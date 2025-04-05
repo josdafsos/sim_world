@@ -12,14 +12,11 @@ soil_types = {
         "water absorption": 0.0005,
     }
 }
-WATER_MOISTURE_LEVEL_TO_RISE_HEIGHT = 0.4  # if moisture reaches this level, water level starts to rise
-WATER_FLOW_RATE_TIME_CONSTANT = 0.5  # defines the speed at which water propagates into nearby tiles
-WATER_MAX_SOURCE_OUTPUT = 0.05
-WATER_MIN_SOURCE_OUTPUT = 0.001
+
 
 world_generation_properties = {
     "generation probabilities": [
-        ["water source", 0.005]
+        ["water source", 0.0015]
     ]
 
 }
