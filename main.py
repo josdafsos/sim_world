@@ -23,8 +23,10 @@ if __name__ == '__main__':
     square_size = 50
     square_x, square_y = (WIDTH - square_size) // 2, (HEIGHT - square_size) // 2  # Centered
 
-    world = terrain.Terrain(background, (50, 50))
+    world = terrain.Terrain(screen, (40, 40), verbose=1)  # background
     world.camera_fit_view()
+
+    last_render_time = time.time()
 
     # Main loop
     running = True
@@ -37,14 +39,19 @@ if __name__ == '__main__':
             if event.type == pygame.QUIT:
                 running = False
 
-
         keyboard_actions.parse_actions(world)
+        if world.autoplay:
+            world.step()
 
-        # screen.fill((0, 0, 0, 255))  # Fill background with white
-        pygame.draw.rect(background, (0, 0, 0, 255), (0, 0, WIDTH, HEIGHT))  # clearing the screen, fill does not work due to transparency
-        world.draw()
-        screen.blit(background, (0, 0))
-        pygame.display.flip()  # Update the screen
+        if time.time() - last_render_time > 0.04:
+            last_render_time = time.time()
+            screen.fill((0, 0, 0, 255))  # Fill background with white
+            # pygame.draw.rect(background, (0, 0, 0, 255), (0, 0, WIDTH, HEIGHT))  # clearing the screen, fill does not work due to transparency
+            world.draw()
+            # screen.blit(background, (0, 0))
+            pygame.display.flip()  # Update the screen
+
+        time.sleep(2e-3)
 
     # Quit pygame
     pygame.quit()

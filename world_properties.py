@@ -6,7 +6,7 @@ soil_types = {
     },
     "rock": {
         "color": (128, 128, 128, 255),
-        "water absorption": 0.00001,
+        "water absorption": 1e-7,
         "nutritional value": 0.1,
     },
     "sand": {

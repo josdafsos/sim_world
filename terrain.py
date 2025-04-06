@@ -1,4 +1,6 @@
 import random
+import time
+
 import pygame
 import numpy as np
 import world_properties
@@ -8,23 +10,36 @@ height_direction = [np.cos(np.deg2rad(210)),
                     np.sin(np.deg2rad(210))]  # with the height increase tile is move towards this vector
 
 class Terrain:
-    def __init__(self, screen, size: tuple[int, int], enable_visualization=True):
+    # TODO optimize surrounding tiles to be a set of tuples
+
+    def __init__(self, screen, size: tuple[int, int], enable_visualization=True, enable_map_loop_visualization=False, verbose: int =0):
         """
         :param screen - pygame screen on which the world will be drawn
         :param size - (width, heigh) size of the generated map
+        :param verbose - {0, 1, 2} sets the amount of information printed in the console
 
         """
         self.screen = screen
         self.camera_pos = [0, 0]
+        self.camera_visible_x_range = []  # coordinates of start and end of visible tiles along x directions
+        self.camera_visible_y_range = []  # coordinates of start and end of visible tiles along y directions
+        self.camera_visible_tiles_cnt = 0  # number of tiles visible on the screen at the moment
         self.tile_width = 30
+        self.enable_map_loop_visualization = enable_map_loop_visualization
         self.map_size = size
         self.terrain_map = [[None for _ in range(self.map_size[1])] for _ in range(self.map_size[0])]
         self.enable_visualization = enable_visualization
+        self.verbose = verbose
+        self.total_steps = 0
+        self.autoplay = False
         for row in range(self.map_size[0]):
             for col in range(self.map_size[1]):
-                self.terrain_map[row][col] = Tile([])
+                self.terrain_map[row][col] = Tile(self, [])
+        self.camera_move("update")
 
     def step(self) -> None:
+
+        time_before_step = time.time()
         for row in range(self.map_size[0]):
             for col in range(self.map_size[1]):
                 surrounding_tiles = self._get_surrounding_tiles(row, col, self.terrain_map)
@@ -33,8 +48,9 @@ class Terrain:
             for col in range(self.map_size[1]):
                 surrounding_tiles = self._get_surrounding_tiles(row, col, self.terrain_map)
                 self.terrain_map[row][col].step(surrounding_tiles, self.enable_visualization)
-
-        print(" --- Step was made ---")
+        self.total_steps += 1
+        if self.verbose > 0:
+            print(f"--- Step {self.total_steps} was made in {time.time() - time_before_step:.4f} seconds ----")
 
     def multiple_steps(self, steps_cnt):
         enable_visualization = self.enable_visualization
@@ -61,7 +77,9 @@ class Terrain:
                 if y >= map_width:
                     y %= map_height
                 surrounding_tiles[i][j] = tile_map[x][y]
+
         surrounding_tiles[center][center] = None
+
         return surrounding_tiles
 
     def camera_move(self, direction: str):
@@ -78,8 +96,23 @@ class Terrain:
             self.tile_width *= 1.05
         elif direction == "zoom out":
             self.tile_width *= 0.95
+        elif direction == "update":  # request to only update camera settings
+            pass
         else:
             raise "unknown camera motion direction"
+        start_x =  -int(self.camera_pos[0] / self.tile_width)
+        end_x = int(start_x + self.screen.get_width() / self.tile_width + 1)
+        start_y= -int(self.camera_pos[1] / self.tile_width)
+        end_y= int(start_y + self.screen.get_height() / self.tile_width + 1)
+        if not self.enable_map_loop_visualization:
+            start_x = max(start_x, 0)
+            end_x = min(end_x, self.map_size[0])
+            start_y = max(start_y, 0)
+            end_y = min(end_y, self.map_size[1])
+
+        self.camera_visible_x_range = (start_x, end_x)
+        self.camera_visible_y_range = (start_y, end_y)
+        self.camera_visible_tiles_cnt = (end_x - start_x) * (end_y - start_y)
 
     def camera_fit_view(self):
         if self.screen is None:
@@ -90,13 +123,24 @@ class Terrain:
         vertical_size = screen_height / self.map_size[1]
         self.tile_width = min(horizontal_size, vertical_size) * 0.98
         self.camera_pos = [0, 0]
+        self.camera_move("update")
 
 
     def draw(self):
-        for row in range(self.map_size[0]):
-            for col in range(self.map_size[1]):
-                cur_pos = [self.camera_pos[0] + self.tile_width * row, self.camera_pos[1] + self.tile_width * col]
-                self.terrain_map[row][col].draw(self.screen, cur_pos, self.tile_width)
+        if not self.enable_visualization or self.screen is None:
+            return
+
+        # case of map loop visualization disabled
+        # TODO optimize to draw only tiles in vision
+        tiles_drawn = 0
+        if not self.enable_map_loop_visualization:
+            for row in range(self.camera_visible_x_range[0], self.camera_visible_x_range[1]):
+                for col in range(self.camera_visible_y_range[0], self.camera_visible_y_range[1]):
+                    cur_pos = [self.camera_pos[0] + self.tile_width * row, self.camera_pos[1] + self.tile_width * col]
+                    self.terrain_map[row][col].draw(self.screen, cur_pos, self.tile_width)
+                    tiles_drawn += 1
+        else:
+            print("camera loop visualization is not yet implemented")  # TODO
 
 
 class Water:
@@ -121,10 +165,13 @@ class Water:
         self.source_intensity = intensity
 
     def prepare_step(self, flattened_surrounding_tiles: list[...]):
-        flow_out_cnt = 1
+        flow_cnt_offset = 1
+        flow_out_cnt = flow_cnt_offset
         for tile in flattened_surrounding_tiles:
             if tile.water.absolute_height - self.absolute_height < 0:
                 flow_out_cnt += 1
+        if flow_cnt_offset == flow_out_cnt:  # if we don't have any outgoing streams we don't need to go further
+            return
 
         for tile in flattened_surrounding_tiles:
             water_diff = tile.water.absolute_height - self.absolute_height
@@ -137,6 +184,8 @@ class Water:
         absorption_level = 0
         for soil_type in self.tile.content_list:  # taking absorption proportionally to the soil %
             absorption_level += world_properties.soil_types[soil_type[0]]["water absorption"] * soil_type[1]
+        if self.tile.vegetation:  # presence of vegetation reduces water  absorption
+            absorption_level *= 0.5
 
         self.moisture_level += self.source_intensity
         self.moisture_level += self.flow_in - self.flow_out
@@ -164,8 +213,8 @@ class Water:
 
 
 
-        self.flow_in = 0
-        self.flow_out = 0
+        self.flow_in = 0.0
+        self.flow_out = 0.0
 
     def draw(self, screen, pos, width, height_scale, height_pos):
 
@@ -175,28 +224,38 @@ class Water:
                               pos[1] + self.absolute_height * height_direction[1] * height_scale]
         if self.relative_height > 0.0001:
             pygame.draw.rect(screen, (40, 40, 255, water_transparency), (water_level_offset[0], water_level_offset[1], width, width))
-        elif self.moisture_level > 0.0001:
-            x_min = height_pos[0]
-            y_min = height_pos[1]
-            for line in self.moisture_lines:
-                pygame.draw.line(screen, (0, 0, 255),
-                                 (x_min + line[0] * width, y_min + line[2] * width),
-                                 (x_min + line[1] * width, y_min + line[2] * width), line[3])
+        else:
+            if self.source_intensity > 1e-4:
+                radius = width/2 * self.source_intensity / self.MAX_SOURCE_OUTPUT
+                pygame.draw.circle(screen, (0, 0, 200, 200),
+                                   (height_pos[0] + width/2, height_pos[1] + width/2),
+                                   radius)
+
+            if self.moisture_level > 0.0001 and self.tile.world.camera_visible_tiles_cnt < 3000: #width > 8:  # second condition is for drawing optimization
+                x_min = height_pos[0]
+                y_min = height_pos[1]
+                for line in self.moisture_lines:
+                    pygame.draw.line(screen, (0, 0, 255),
+                                     (x_min + line[0] * width, y_min + line[2] * width),
+                                     (x_min + line[1] * width, y_min + line[2] * width), line[3])
 
 
 
 class Tile:
 
-    def __init__(self, surrounding_tiles: list[list[...]]):
+    def __init__(self, world, surrounding_tiles: list[list[...]]):
         """
         Generates random tile
         """
         self.height_level: float = random.random()
+        self.world = world
         self.water = Water(self)
         self.content_list: list = []
         self.modifiers = []
         self.vegetation = {}
         self.nutrition = 0
+
+
         flattened_tiles = [item for sublist in surrounding_tiles if sublist is not None for item in sublist if item is not None]
 
         # purely random tile
@@ -236,20 +295,9 @@ class Tile:
                            item is not None]
 
         self.water.prepare_step(flattened_tiles)
-        for plant in self.vegetation.values():
-            plant.prepare_step(flattened_tiles)
+        for key in list(self.vegetation.keys()):
+            self.vegetation[key].prepare_step(flattened_tiles)
 
-        # flow_out_cnt = 1
-        # for tile in flattened_tiles:
-        #     if tile.absolute_height - self.absolute_height < 0:
-        #         flow_out_cnt += 1
-        #
-        # for tile in flattened_tiles:
-        #     water_diff = tile.absolute_height - self.absolute_height
-        #     if water_diff < 0:
-        #         single_tile_flow_rate_out = self.moisture_level * world_properties.WATER_FLOW_RATE_TIME_CONSTANT / flow_out_cnt
-        #         tile.flow_in += single_tile_flow_rate_out
-        #         self.flow_out += single_tile_flow_rate_out
 
     def step(self, surrounding_tiles: list[list[...]], update_visuals=False):
         flattened_tiles = [item for sublist in surrounding_tiles if sublist is not None for item in sublist if
@@ -261,8 +309,11 @@ class Tile:
             # if modifier[0] == "water source":
             #     self.moisture_level += modifier[1]
         self.water.step(update_visuals)
-        for plant in self.vegetation.values():
-            plant.step(update_visuals, flattened_tiles)
+        # for plant in self.vegetation.values():
+        #     plant.step(update_visuals, flattened_tiles)
+        for key in list(self.vegetation.keys()):
+            self.vegetation[key].step(update_visuals, flattened_tiles)
+
 
     def draw(self, screen, pos, width):
         height_scale = width * 0.5
@@ -274,11 +325,12 @@ class Tile:
 
         # drawing land modifiers
         for modifier in self.modifiers:
-            if modifier[0] == "water source":
-                radius = width/2 * modifier[1] / Water.MAX_SOURCE_OUTPUT
-                pygame.draw.circle(screen, (0, 0, 200, 200),
-                                   (height_pos[0] + width/2, height_pos[1] + width/2),
-                                   radius)
+            pass
+            # if modifier[0] == "water source":  # water source is drawn in Water class
+            #     radius = width/2 * modifier[1] / Water.MAX_SOURCE_OUTPUT
+            #     pygame.draw.circle(screen, (0, 0, 200, 200),
+            #                        (height_pos[0] + width/2, height_pos[1] + width/2),
+            #                        radius)
 
 
         self.water.draw(screen, pos, width, height_scale, height_pos)
