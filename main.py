@@ -4,6 +4,8 @@ import pygame
 
 import keyboard_actions
 import terrain
+import creatures
+import agents
 
 if __name__ == '__main__':
     # Initialize pygame
@@ -23,8 +25,12 @@ if __name__ == '__main__':
     square_size = 50
     square_x, square_y = (WIDTH - square_size) // 2, (HEIGHT - square_size) // 2  # Centered
 
-    world = terrain.Terrain(screen, (40, 40), verbose=1)  # background
+    world = terrain.Terrain(screen, (20, 20), verbose=0)  # background
     world.camera_fit_view()
+
+    random_cow_agent = agents.RandomCow()
+    random_cow = creatures.Creature(random_cow_agent)
+    world.add_creature(random_cow)
 
     last_render_time = time.time()
 
@@ -43,7 +49,7 @@ if __name__ == '__main__':
         if world.autoplay:
             world.step()
 
-        if time.time() - last_render_time > 0.04:
+        if world.enable_visualization and time.time() - last_render_time > 0.04:
             last_render_time = time.time()
             screen.fill((0, 0, 0, 255))  # Fill background with white
             # pygame.draw.rect(background, (0, 0, 0, 255), (0, 0, WIDTH, HEIGHT))  # clearing the screen, fill does not work due to transparency

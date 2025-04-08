@@ -50,9 +50,10 @@ class Vegetation:
                 del self.tile.vegetation[self.TYPE]
 
 
-    def prepare_step(self, flattened_surrounding_tiles: list[...]):
+    def prepare_step(self):
         total_moisture = 0
-        for tile in flattened_surrounding_tiles:
+        surrounding_tiles = self.tile.surround_tiles_dict["012"]
+        for tile in surrounding_tiles:
             total_moisture += tile.water.moisture_level
 
         if self.tile.water.relative_height > 1e-4:
@@ -65,10 +66,11 @@ class Vegetation:
 
         self.clear_dead_plants()
 
-    def step(self, update_visuals, flattened_surrounding_tiles: list[...]):
+    def step(self, update_visuals):
         growth_power = self.size * self.count
-        planting_probability = 0.2 * growth_power / (self.MAX_CNT * len(flattened_surrounding_tiles))
-        for tile in flattened_surrounding_tiles:
+        surround_tiles = self.tile.surround_tiles_dict["012"]
+        planting_probability = 0.2 * growth_power / (self.MAX_CNT * len(surround_tiles))
+        for tile in surround_tiles:
             if planting_probability > random.random():
                 self.plant(tile)
 

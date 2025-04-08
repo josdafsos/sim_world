@@ -1,3 +1,4 @@
+
 soil_types = {
     "dirt": {
         "color": (148, 85, 49, 255),

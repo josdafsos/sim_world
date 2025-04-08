@@ -5,12 +5,14 @@ import pygame
 import numpy as np
 import world_properties
 import vegetation
+import creatures
+import agents
 
-height_direction = [np.cos(np.deg2rad(210)),
-                    np.sin(np.deg2rad(210))]  # with the height increase tile is move towards this vector
 
 class Terrain:
-    # TODO optimize surrounding tiles to be a set of tuples
+    height_direction = (np.cos(np.deg2rad(210)),
+                        np.sin(np.deg2rad(210)))  # with the height increase tile is move towards this vector
+    HOURS_PER_STEP = 6  # how many hours are passed after each mini-step is made
 
     def __init__(self, screen, size: tuple[int, int], enable_visualization=True, enable_map_loop_visualization=False, verbose: int =0):
         """
@@ -25,30 +27,64 @@ class Terrain:
         self.camera_visible_y_range = []  # coordinates of start and end of visible tiles along y directions
         self.camera_visible_tiles_cnt = 0  # number of tiles visible on the screen at the moment
         self.tile_width = 30
+        self.height_scale = self.tile_width * 0.5
         self.enable_map_loop_visualization = enable_map_loop_visualization
         self.map_size = size
-        self.terrain_map = [[None for _ in range(self.map_size[1])] for _ in range(self.map_size[0])]
+        self.terrain_map: list[list[Tile | ...]] = [[None for _ in range(self.map_size[1])] for _ in range(self.map_size[0])]
         self.enable_visualization = enable_visualization
         self.verbose = verbose
         self.total_steps = 0
         self.autoplay = False
+        self.current_time_hours: int = 0  # current time of the day
+        self.creatures = []  # list of all creatures currently living in the world
+
         for row in range(self.map_size[0]):
             for col in range(self.map_size[1]):
-                self.terrain_map[row][col] = Tile(self, [])
+                self.terrain_map[row][col] = Tile(self, [], (row, col))
+        for row in range(self.map_size[0]):
+            for col in range(self.map_size[1]):
+                _, distance_sorted_tiles = self._get_surrounding_tiles(row, col, self.terrain_map, search_diameter=5)
+                self.terrain_map[row][col].set_surrounding_tiles(distance_sorted_tiles)
+
+        self.terrain_map = tuple(tuple(inner) for inner in self.terrain_map)
         self.camera_move("update")
 
-    def step(self) -> None:
+    def add_creature(self, creature: creatures.Creature, position: None | tuple[int, int] = None) -> None:
+        """
+        :param creature:
+        :param position: coordinates on the map or None for random position
+        :return:
+        """
+        if position is None:
+            row = random.randint(0, self.map_size[0])
+            col = random.randint(0, self.map_size[1])
+            position = (row, col)
 
+        tile = self.get_tile_by_index(position)
+        creature.set_tile(tile)
+        self.creatures.append(creature)
+
+    def step(self) -> None:
         time_before_step = time.time()
-        for row in range(self.map_size[0]):
-            for col in range(self.map_size[1]):
-                surrounding_tiles = self._get_surrounding_tiles(row, col, self.terrain_map)
-                self.terrain_map[row][col].prepare_step(surrounding_tiles)
-        for row in range(self.map_size[0]):
-            for col in range(self.map_size[1]):
-                surrounding_tiles = self._get_surrounding_tiles(row, col, self.terrain_map)
-                self.terrain_map[row][col].step(surrounding_tiles, self.enable_visualization)
-        self.total_steps += 1
+
+        if self.creatures and self.current_time_hours <= 24 - self.HOURS_PER_STEP:  # in case we have any creatures, iterate through them
+            for creature in self.creatures:
+                creature.make_action()
+            self.current_time_hours += self.HOURS_PER_STEP
+        else:
+            self.current_time_hours = 0
+            for row in range(self.map_size[0]):
+                for col in range(self.map_size[1]):
+                    self.terrain_map[row][col].prepare_step()
+            for row in range(self.map_size[0]):
+                for col in range(self.map_size[1]):
+                    self.terrain_map[row][col].step(self.enable_visualization)  #(surrounding_tiles, self.enable_visualization)
+
+            for creature in self.creatures:
+                creature.new_day()
+
+            self.total_steps += 1
+
         if self.verbose > 0:
             print(f"--- Step {self.total_steps} was made in {time.time() - time_before_step:.4f} seconds ----")
 
@@ -59,15 +95,18 @@ class Terrain:
             self.step()
         self.enable_visualization = enable_visualization
 
+    def get_tile_by_index(self, tile_index: tuple[int, int]):
+        return self.terrain_map[tile_index[0]][tile_index[1]]
 
-    def _get_surrounding_tiles(self, row: int, col: int, tile_map: list[list[...]]) -> list[list[...]]:
+    def _get_surrounding_tiles(self, row: int, col: int, tile_map: list[list[...]], search_diameter=3) -> list[list[...]]:
         """
         Central tile is set to None as the surrounding around it is computed
         """
-        surrounding_size = 3  # must be odd
+        surrounding_size = search_diameter  # must be odd
         center = (surrounding_size - 1) // 2
         map_width, map_height = len(tile_map), len(tile_map[0])
         surrounding_tiles = [[None for _ in range(surrounding_size)] for _ in range(surrounding_size)]
+        distance_sorted_tiles = {}
         for i in range(surrounding_size):
             for j in range(surrounding_size):
                 x = row + i - center
@@ -77,10 +116,15 @@ class Terrain:
                 if y >= map_width:
                     y %= map_height
                 surrounding_tiles[i][j] = tile_map[x][y]
+                radius = max(abs(i-center), abs(j-center))
+                if radius != 0:
+                    if radius not in distance_sorted_tiles:
+                        distance_sorted_tiles[radius] = []
+                    distance_sorted_tiles[radius].append(tile_map[x][y])
 
         surrounding_tiles[center][center] = None
 
-        return surrounding_tiles
+        return surrounding_tiles, distance_sorted_tiles
 
     def camera_move(self, direction: str):
         step = 0.5 * self.tile_width
@@ -100,10 +144,13 @@ class Terrain:
             pass
         else:
             raise "unknown camera motion direction"
-        start_x =  -int(self.camera_pos[0] / self.tile_width)
+
+        self.height_scale = self.tile_width * 0.5
+
+        start_x = -int(self.camera_pos[0] / self.tile_width)
         end_x = int(start_x + self.screen.get_width() / self.tile_width + 1)
-        start_y= -int(self.camera_pos[1] / self.tile_width)
-        end_y= int(start_y + self.screen.get_height() / self.tile_width + 1)
+        start_y = -int(self.camera_pos[1] / self.tile_width)
+        end_y = int(start_y + self.screen.get_height() / self.tile_width + 1)
         if not self.enable_map_loop_visualization:
             start_x = max(start_x, 0)
             end_x = min(end_x, self.map_size[0])
@@ -125,13 +172,11 @@ class Terrain:
         self.camera_pos = [0, 0]
         self.camera_move("update")
 
-
     def draw(self):
         if not self.enable_visualization or self.screen is None:
             return
 
         # case of map loop visualization disabled
-        # TODO optimize to draw only tiles in vision
         tiles_drawn = 0
         if not self.enable_map_loop_visualization:
             for row in range(self.camera_visible_x_range[0], self.camera_visible_x_range[1]):
@@ -139,6 +184,11 @@ class Terrain:
                     cur_pos = [self.camera_pos[0] + self.tile_width * row, self.camera_pos[1] + self.tile_width * col]
                     self.terrain_map[row][col].draw(self.screen, cur_pos, self.tile_width)
                     tiles_drawn += 1
+            for creature in self.creatures:
+                row, col = creature.tile.in_map_position
+                cur_pos = [self.camera_pos[0] + self.tile_width * row, self.camera_pos[1] + self.tile_width * col]
+                creature.draw(self.screen, cur_pos, self.tile_width)
+
         else:
             print("camera loop visualization is not yet implemented")  # TODO
 
@@ -161,19 +211,21 @@ class Water:
         self.moisture_lines = []
         self.source_intensity = 0
 
+
     def add_water_source(self, intensity: float):
         self.source_intensity = intensity
 
-    def prepare_step(self, flattened_surrounding_tiles: list[...]):
+    def prepare_step(self):
         flow_cnt_offset = 1
         flow_out_cnt = flow_cnt_offset
-        for tile in flattened_surrounding_tiles:
+        surround_tiles = self.tile.surround_tiles_dict["1"]
+        for tile in surround_tiles:
             if tile.water.absolute_height - self.absolute_height < 0:
                 flow_out_cnt += 1
         if flow_cnt_offset == flow_out_cnt:  # if we don't have any outgoing streams we don't need to go further
             return
 
-        for tile in flattened_surrounding_tiles:
+        for tile in surround_tiles:
             water_diff = tile.water.absolute_height - self.absolute_height
             if water_diff < 0:
                 single_tile_flow_rate_out = self.moisture_level * Water.FLOW_RATE_TIME_CONSTANT / flow_out_cnt
@@ -220,18 +272,18 @@ class Water:
 
         water_transparency = max(255 - self.moisture_level * 255, 20)
 
-        water_level_offset = [pos[0] + self.absolute_height * height_direction[0] * height_scale,
-                              pos[1] + self.absolute_height * height_direction[1] * height_scale]
+        water_level_offset = [pos[0] + self.absolute_height * self.tile.world.height_direction[0] * height_scale,
+                              pos[1] + self.absolute_height * self.tile.world.height_direction[1] * height_scale]
         if self.relative_height > 0.0001:
             pygame.draw.rect(screen, (40, 40, 255, water_transparency), (water_level_offset[0], water_level_offset[1], width, width))
-        else:
+        elif self.tile.world.camera_visible_tiles_cnt < 3000:
             if self.source_intensity > 1e-4:
                 radius = width/2 * self.source_intensity / self.MAX_SOURCE_OUTPUT
                 pygame.draw.circle(screen, (0, 0, 200, 200),
                                    (height_pos[0] + width/2, height_pos[1] + width/2),
                                    radius)
 
-            if self.moisture_level > 0.0001 and self.tile.world.camera_visible_tiles_cnt < 3000: #width > 8:  # second condition is for drawing optimization
+            if self.moisture_level > 0.0001: #width > 8:  # second condition is for drawing optimization
                 x_min = height_pos[0]
                 y_min = height_pos[1]
                 for line in self.moisture_lines:
@@ -240,10 +292,9 @@ class Water:
                                      (x_min + line[1] * width, y_min + line[2] * width), line[3])
 
 
-
 class Tile:
 
-    def __init__(self, world, surrounding_tiles: list[list[...]]):
+    def __init__(self, world, surrounding_tiles: list[list[...]], in_map_position):
         """
         Generates random tile
         """
@@ -253,7 +304,9 @@ class Tile:
         self.content_list: list = []
         self.modifiers = []
         self.vegetation = {}
+        self.surround_tiles_dict = {}
         self.nutrition = 0
+        self.in_map_position: tuple[int, int] = in_map_position   # (row, col) indexes of the tile in the world
 
 
         flattened_tiles = [item for sublist in surrounding_tiles if sublist is not None for item in sublist if item is not None]
@@ -290,36 +343,36 @@ class Tile:
 
                 print("added ", generation_property[0])
 
-    def prepare_step(self, surrounding_tiles: list[list[...]]):
-        flattened_tiles = [item for sublist in surrounding_tiles if sublist is not None for item in sublist if
-                           item is not None]
+    def set_surrounding_tiles(self, surrounding_tiles):
+        self.surround_tiles_dict["1"] = tuple(surrounding_tiles[1])
+        self.surround_tiles_dict["2"] = tuple(surrounding_tiles[2])
+        self.surround_tiles_dict["01"] = tuple([self] + surrounding_tiles[1])
+        self.surround_tiles_dict["12"] = tuple(surrounding_tiles[1] + surrounding_tiles[2])
+        self.surround_tiles_dict["012"] = tuple([self] + surrounding_tiles[1] + surrounding_tiles[2])
 
-        self.water.prepare_step(flattened_tiles)
+    def prepare_step(self):
+        self.water.prepare_step()
         for key in list(self.vegetation.keys()):
-            self.vegetation[key].prepare_step(flattened_tiles)
+            self.vegetation[key].prepare_step()
 
 
-    def step(self, surrounding_tiles: list[list[...]], update_visuals=False):
-        flattened_tiles = [item for sublist in surrounding_tiles if sublist is not None for item in sublist if
-                           item is not None]
-
+    def step(self, update_visuals=False):
         for modifier in self.modifiers:
             pass
             # water is processed automatically inside of Water class
             # if modifier[0] == "water source":
             #     self.moisture_level += modifier[1]
         self.water.step(update_visuals)
-        # for plant in self.vegetation.values():
-        #     plant.step(update_visuals, flattened_tiles)
-        for key in list(self.vegetation.keys()):
-            self.vegetation[key].step(update_visuals, flattened_tiles)
+
+        for key in list(self.vegetation.keys()):  # call via listed keys is due to potential deletion of a key
+            self.vegetation[key].step(update_visuals)
 
 
     def draw(self, screen, pos, width):
-        height_scale = width * 0.5
+        height_scale = width * 0.5  # TODO remove this value from the draw function since it is accessasble via self.world.height_scale
         texture_color = world_properties.soil_types[self.content_list[0][0]]["color"]
-        height_pos = [pos[0] + self.height_level * height_direction[0] * height_scale,
-                      pos[1] + self.height_level * height_direction[1] * height_scale]
+        height_pos = [pos[0] + self.height_level * self.world.height_direction[0] * self.world.height_scale,
+                      pos[1] + self.height_level * self.world.height_direction[1] * self.world.height_scale]
         # for now drawing the highest content only
         pygame.draw.rect(screen, texture_color, (height_pos[0], height_pos[1], width, width))
 
