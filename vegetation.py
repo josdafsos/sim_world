@@ -3,8 +3,8 @@ import pygame
 
 class Vegetation:
 
-    MAX_CNT = 1  # maximum number of certain vegetation type per tile
-    MAX_LENGTH = 1.0  # visual length of vegetation as ration of tile width
+    MAX_CNT = 1  # maximum number of certain vegetation_dict type per tile
+    MAX_LENGTH = 1.0  # visual length of vegetation_dict as ration of tile width
     MIN_NEW_PLANT_SIZE = 0.05 # plant dies if its size below this value
     MIN_PLANT_SIZE = 0.1  # minimum size of a newly created plant
     MIN_MOISTURE_REQUIRED = 0.05  # if surrounding tile don't provide enough moisture, plants will fade
@@ -13,7 +13,7 @@ class Vegetation:
 
     def __init__(self, self_tile):
         self.tile = self_tile
-        self.vegetation_list: list[list[...]] = []  # list of vegetation properties, each entity [size, x_pos, y_pos], size in (0, 1) range
+        self.vegetation_list: list[list[...]] = []  # list of vegetation_dict properties, each entity [size, x_pos, y_pos], size in (0, 1) range
         self.size = -1  # max 1
         self.count = 0
 
@@ -21,24 +21,24 @@ class Vegetation:
         return Vegetation(tile)
 
     def plant(self, tile, growing_power=-1.0):
-        if not self.TYPE in tile.vegetation:
-            tile.vegetation[self.TYPE] = self._create_entity(tile)
+        if not self.TYPE in tile.vegetation_dict:
+            tile.vegetation_dict[self.TYPE] = self._create_entity(tile)
 
-        if tile.vegetation[self.TYPE].size < 0:
-            tile.vegetation[self.TYPE].size = self.MIN_NEW_PLANT_SIZE + random.random() * 0.5
+        if tile.vegetation_dict[self.TYPE].size < 0:
+            tile.vegetation_dict[self.TYPE].size = self.MIN_NEW_PLANT_SIZE + random.random() * 0.5
         if growing_power < 0:  # growing randomly
-            new_plants_cnt = min(self.MAX_CNT - tile.vegetation[self.TYPE].count, 1  + random.randint(1, self.MAX_CNT))
+            new_plants_cnt = min(self.MAX_CNT - tile.vegetation_dict[self.TYPE].count, 1 + random.randint(1, self.MAX_CNT))
         else:
-            new_plants_cnt = min(self.MAX_CNT - tile.vegetation[self.TYPE].count,
+            new_plants_cnt = min(self.MAX_CNT - tile.vegetation_dict[self.TYPE].count,
                                  1 + int(random.random() * 0.1 * growing_power))
-        tile.vegetation[self.TYPE].count += new_plants_cnt
+        tile.vegetation_dict[self.TYPE].count += new_plants_cnt
         for _ in range(new_plants_cnt):
             new_plant = [random.random() * 0.7 + 0.3,
                          # plant size, max 1
                          random.random(),  # X coordinate
                          random.random() * 0.9 + 0.05,  # Y coordinate
                          ]
-            tile.vegetation[self.TYPE].vegetation_list.append(new_plant)
+            tile.vegetation_dict[self.TYPE].vegetation_list.append(new_plant)
 
     def clear_dead_plants(self):
         # removing plants with size less than minimal required for life
@@ -47,7 +47,7 @@ class Vegetation:
             if self.count > 0:
                 self.vegetation_list = self.vegetation_list[:self.count]
             else:
-                del self.tile.vegetation[self.TYPE]
+                del self.tile.vegetation_dict[self.TYPE]
 
 
     def prepare_step(self):

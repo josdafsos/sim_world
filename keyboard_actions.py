@@ -18,7 +18,7 @@ def world_step(world, action, key_idx_list):
 
 def world_autoplay(world, action, pressed_key_idx_list):
     action["last call time"] = time.time()
-    if time.time() - action["last release time"] < 0.500:
+    if time.time() - action["last release time"] < 0.300:
         world.autoplay = True
         print("world autoplay enabled")
     action["steps in row"] = min(action["steps in row"] + 1, 30)

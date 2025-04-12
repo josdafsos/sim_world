@@ -14,13 +14,19 @@ class Terrain:
                         np.sin(np.deg2rad(210)))  # with the height increase tile is move towards this vector
     HOURS_PER_STEP = 6  # how many hours are passed after each mini-step is made
 
-    def __init__(self, screen, size: tuple[int, int], enable_visualization=True, enable_map_loop_visualization=False, verbose: int =0):
+    def __init__(self, screen, size: tuple[int, int], enable_visualization=True,
+                 enable_map_loop_visualization=False,
+                 verbose: int = 0,
+                 is_round_map=True):
         """
         :param screen - pygame screen on which the world will be drawn
         :param size - (width, heigh) size of the generated map
         :param verbose - {0, 1, 2} sets the amount of information printed in the console
+        :param is_round_map If true the map connects opposite ends of the map
 
         """
+
+        # --- visual settings ---
         self.screen = screen
         self.camera_pos = [0, 0]
         self.camera_visible_x_range = []  # coordinates of start and end of visible tiles along x directions
@@ -28,10 +34,16 @@ class Terrain:
         self.camera_visible_tiles_cnt = 0  # number of tiles visible on the screen at the moment
         self.tile_width = 30
         self.height_scale = self.tile_width * 0.5
-        self.enable_map_loop_visualization = enable_map_loop_visualization
+        self.enable_visualization = enable_visualization
+        self.font = pygame.font.SysFont(None, 48)
+
+        # --- map settings ---
+        self.is_round_map = is_round_map
+        self.enable_map_loop_visualization = enable_map_loop_visualization and is_round_map
         self.map_size = size
         self.terrain_map: list[list[Tile | ...]] = [[None for _ in range(self.map_size[1])] for _ in range(self.map_size[0])]
-        self.enable_visualization = enable_visualization
+
+        # --- other settings ---
         self.verbose = verbose
         self.total_steps = 0
         self.autoplay = False
@@ -44,7 +56,7 @@ class Terrain:
         for row in range(self.map_size[0]):
             for col in range(self.map_size[1]):
                 _, distance_sorted_tiles = self._get_surrounding_tiles(row, col, self.terrain_map, search_diameter=5)
-                self.terrain_map[row][col].set_surrounding_tiles(distance_sorted_tiles)
+                self.terrain_map[row][col]._set_surrounding_tiles(distance_sorted_tiles)
 
         self.terrain_map = tuple(tuple(inner) for inner in self.terrain_map)
         self.camera_move("update")
@@ -79,9 +91,13 @@ class Terrain:
             for row in range(self.map_size[0]):
                 for col in range(self.map_size[1]):
                     self.terrain_map[row][col].step(self.enable_visualization)  #(surrounding_tiles, self.enable_visualization)
-
-            for creature in self.creatures:
-                creature.new_day()
+            i = 0
+            while i < len(self.creatures):
+                is_rotten = self.creatures[i].new_day()
+                if is_rotten:
+                    self.creatures.pop(i)
+                else:
+                    i += 1
 
             self.total_steps += 1
 
@@ -95,8 +111,26 @@ class Terrain:
             self.step()
         self.enable_visualization = enable_visualization
 
-    def get_tile_by_index(self, tile_index: tuple[int, int]):
-        return self.terrain_map[tile_index[0]][tile_index[1]]
+    def get_tile_by_index(self, tile_index: tuple[int, int], offset=(0, 0)):
+        if self.is_round_map:
+            row = (tile_index[0] + offset[0] + self.map_size[0]) % self.map_size[0]
+            col = (tile_index[1] + offset[1] + self.map_size[1]) % self.map_size[1]
+            return self.terrain_map[row][col]
+        else:
+            raise "Bordered maps are not implemented yet"
+
+    def get_creature_on_tile(self, tile):
+        """ Returns a creature on the tile. If tile is empty returns None"""
+        for creature in self.creatures:
+            if creature.tile == tile:
+                return creature
+        return None
+
+    def delete_creature(self, creature):
+        if creature in self.creatures:
+            self.creatures.remove(creature)
+            if self.verbose > 0:
+                print(f"creature deleted, total creature count: {len(self.creatures)}")
 
     def _get_surrounding_tiles(self, row: int, col: int, tile_map: list[list[...]], search_diameter=3) -> list[list[...]]:
         """
@@ -126,8 +160,9 @@ class Terrain:
 
         return surrounding_tiles, distance_sorted_tiles
 
-    def camera_move(self, direction: str):
+    def camera_move(self, direction: str, is_camera_rescaled = False):
         step = 0.5 * self.tile_width
+
         if direction == "left":
             self.camera_pos[0] += step
         elif direction == "right":
@@ -138,14 +173,24 @@ class Terrain:
             self.camera_pos[1] -= step
         elif direction == "zoom in":
             self.tile_width *= 1.05
+            is_camera_rescaled = True
         elif direction == "zoom out":
             self.tile_width *= 0.95
+            is_camera_rescaled = True
         elif direction == "update":  # request to only update camera settings
             pass
         else:
             raise "unknown camera motion direction"
 
         self.height_scale = self.tile_width * 0.5
+        if is_camera_rescaled:
+            if self.tile_width < 30:
+                self.font = pygame.font.SysFont(None, 30)
+            else:
+                self.font = pygame.font.SysFont(None, 48)
+
+            for creature in self.creatures:
+                creature.on_rescale()  # changing texture sizes
 
         start_x = -int(self.camera_pos[0] / self.tile_width)
         end_x = int(start_x + self.screen.get_width() / self.tile_width + 1)
@@ -170,7 +215,7 @@ class Terrain:
         vertical_size = screen_height / self.map_size[1]
         self.tile_width = min(horizontal_size, vertical_size) * 0.98
         self.camera_pos = [0, 0]
-        self.camera_move("update")
+        self.camera_move("update", is_camera_rescaled=True)
 
     def draw(self):
         if not self.enable_visualization or self.screen is None:
@@ -236,7 +281,7 @@ class Water:
         absorption_level = 0
         for soil_type in self.tile.content_list:  # taking absorption proportionally to the soil %
             absorption_level += world_properties.soil_types[soil_type[0]]["water absorption"] * soil_type[1]
-        if self.tile.vegetation:  # presence of vegetation reduces water  absorption
+        if self.tile.vegetation_dict:  # presence of vegetation_dict reduces water  absorption
             absorption_level *= 0.5
 
         self.moisture_level += self.source_intensity
@@ -303,7 +348,7 @@ class Tile:
         self.water = Water(self)
         self.content_list: list = []
         self.modifiers = []
-        self.vegetation = {}
+        self.vegetation_dict = {}
         self.surround_tiles_dict = {}
         self.nutrition = 0
         self.in_map_position: tuple[int, int] = in_map_position   # (row, col) indexes of the tile in the world
@@ -336,25 +381,48 @@ class Tile:
                     self.water.add_water_source(water_source_intensity)
                     self.modifiers.append([generation_property[0], water_source_intensity])   # second element is generating speed
                 elif generation_property[0] == "grass":
-                    if not "grass" in self.vegetation:
-                        self.vegetation["grass"] = vegetation.Grass(self)
+                    if not "grass" in self.vegetation_dict:
+                        self.vegetation_dict["grass"] = vegetation.Grass(self)
 
-                    self.vegetation["grass"].plant(self)
+                    self.vegetation_dict["grass"].plant(self)
 
                 print("added ", generation_property[0])
 
-    def set_surrounding_tiles(self, surrounding_tiles):
+    def has_vegetation(self, vegetation_list: tuple[str, ...]):
+        has_vegetation = False
+        existing_plant_key = None
+        for plant in vegetation_list:
+            if plant in self.vegetation_dict:
+                has_vegetation = True
+                existing_plant_key = plant
+                break
+        return has_vegetation, existing_plant_key
+
+    def consume_vegetation(self, vegetation_options) -> bool:
+        has_vegetation, plant_key = self.has_vegetation(vegetation_options)
+        if not has_vegetation:
+            return False
+        del self.vegetation_dict[plant_key]
+        return True
+
+    def _set_surrounding_tiles(self, surrounding_tiles):
         self.surround_tiles_dict["1"] = tuple(surrounding_tiles[1])
         self.surround_tiles_dict["2"] = tuple(surrounding_tiles[2])
         self.surround_tiles_dict["01"] = tuple([self] + surrounding_tiles[1])
         self.surround_tiles_dict["12"] = tuple(surrounding_tiles[1] + surrounding_tiles[2])
         self.surround_tiles_dict["012"] = tuple([self] + surrounding_tiles[1] + surrounding_tiles[2])
 
+    def get_surrounding_tile(self, tile_range: int | str):
+        if isinstance(tile_range, int):
+            # yes, it is hardcoded for now
+            radius_tuple = ("01", "012")
+            return self.surround_tiles_dict[radius_tuple[tile_range]]
+        return self.surround_tiles_dict[tile_range]
+
     def prepare_step(self):
         self.water.prepare_step()
-        for key in list(self.vegetation.keys()):
-            self.vegetation[key].prepare_step()
-
+        for key in list(self.vegetation_dict.keys()):
+            self.vegetation_dict[key].prepare_step()
 
     def step(self, update_visuals=False):
         for modifier in self.modifiers:
@@ -364,8 +432,8 @@ class Tile:
             #     self.moisture_level += modifier[1]
         self.water.step(update_visuals)
 
-        for key in list(self.vegetation.keys()):  # call via listed keys is due to potential deletion of a key
-            self.vegetation[key].step(update_visuals)
+        for key in list(self.vegetation_dict.keys()):  # call via listed keys is due to potential deletion of a key
+            self.vegetation_dict[key].step(update_visuals)
 
 
     def draw(self, screen, pos, width):
@@ -387,7 +455,7 @@ class Tile:
 
 
         self.water.draw(screen, pos, width, height_scale, height_pos)
-        for plant in self.vegetation.values():  # iteration is due to multiple kinds of plants
+        for plant in self.vegetation_dict.values():  # iteration is due to multiple kinds of plants
             plant.draw(screen, pos, width, height_scale, height_pos)
 
 
