@@ -19,14 +19,17 @@ if __name__ == '__main__':
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Sim world")
 
-    world = terrain.Terrain(screen, (10, 10), verbose=1)  # background
+    world = terrain.Terrain(screen, (50, 50), verbose=0)  # background
     world.camera_fit_view()
-    world.multiple_steps(50)
+    world.multiple_steps(100)
 
     random_cow_agent = agents.RandomCow()
-    random_cow = creatures.Creature(random_cow_agent, texture="cow.png")
-    world.add_creature(creatures.Creature(random_cow_agent, texture="cow.png"))
-    world.add_creature(creatures.Creature(random_cow_agent))
+    dqn_cow_agent = agents.DQNCow(verbose=1)
+    # random_cow = creatures.Creature(random_cow_agent, texture="cow.png")
+    #world.add_creature(creatures.Creature(random_cow_agent))
+    #world.add_creature(creatures.Creature(random_cow_agent))
+    world.add_creature(creatures.Creature(dqn_cow_agent, texture="cow.png", verbose=0))
+
 
 
     last_render_time = time.time()
@@ -36,6 +39,9 @@ if __name__ == '__main__':
     time_step_made = time.time()
     steps_made_in_a_row = 0
     while running:
+
+        if not len(world.creatures):
+            world.add_creature(creatures.Creature(dqn_cow_agent, texture="cow.png", verbose=0))  # spawning cow if everyone is dead
 
         # Handle events
         for event in pygame.event.get():

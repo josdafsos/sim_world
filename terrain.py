@@ -332,12 +332,16 @@ class Water:
                 x_min = height_pos[0]
                 y_min = height_pos[1]
                 for line in self.moisture_lines:
-                    pygame.draw.line(screen, (0, 0, 255),
+                    pygame.draw.line(screen,
+                                     (0, 0, 255),
                                      (x_min + line[0] * width, y_min + line[2] * width),
-                                     (x_min + line[1] * width, y_min + line[2] * width), line[3])
+                                     (x_min + line[1] * width, y_min + line[2] * width),
+                                     line[3])
 
 
 class Tile:
+
+    # TODO cache tile states to b faster obtained by the creatures
 
     def __init__(self, world, surrounding_tiles: list[list[...]], in_map_position):
         """
@@ -416,7 +420,7 @@ class Tile:
         if isinstance(tile_range, int):
             # yes, it is hardcoded for now
             radius_tuple = ("01", "012")
-            return self.surround_tiles_dict[radius_tuple[tile_range]]
+            return self.surround_tiles_dict[radius_tuple[tile_range-1]]
         return self.surround_tiles_dict[tile_range]
 
     def prepare_step(self):

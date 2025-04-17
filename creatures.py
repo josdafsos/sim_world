@@ -15,6 +15,9 @@ class Creature:
     CHANCE_OF_BIRTH = 0.005  # on new day if the creature is in good condition there is chance to increase
     # population per each existing creature in stack
 
+    OBSERVATION_SPACE: tuple[int,] = (42,)  # 106 for radius 2
+    ACTION_SPACE: int = 27  # [{-1, 0, 1}, {-1, 0, 1}, {0, 1, 2}
+
     # activity that can be done towards selected tile,
     # options: move (also unify, reproduce, attack (if hostile), move onto the current tile = sleep); eat;
     # attack/split (if tile is empty, half of species go to the tile. If own tile is selected,
@@ -118,6 +121,8 @@ class Creature:
         while True:
             # action tuple (tile relative number {(-1, -1), (1,0), (-1,1), etc}, action number)
             action = self.agent.predict(self.observation)
+            if self.verbose > 0:
+                print(f"action: {action}")
             if self.AVAILABLE_ACTIONS[action[1]] == "move":
                 if action[0] == (0, 0):
                     self._sleep(has_done_action)
@@ -164,9 +169,27 @@ class Creature:
                 pygame.draw.rect(screen, (30, 30, 30), (height_pos[0], height_pos[1], 0.5 * width, 0.5 * width))
             else:
                 self.world.screen.blit(self.scaled_texture, (height_pos[0] + 0.25 * width, height_pos[1] + 0.45 * width))
+
         if self.days_since_death < 1:
-            text_surface = self.world.font.render(str(self.species_cnt), True, (255, 255, 255))
-            self.world.screen.blit(text_surface, (height_pos[0] + 0.5 * width, height_pos[1] + 0.45 * width))
+
+            if self.MAX_HP - self.current_hp > 1e-4:  # drawing hp bar if it is not maximum
+                x = height_pos[0] + 0.05 * width
+                y = height_pos[1] + 0.8 * width
+                length = 0.6 * width
+                hp_ratio = max(0, self.current_hp / self.MAX_HP)
+                pygame.draw.line(screen,
+                                 (0, 0, 0),
+                                 (x, y),
+                                 (x + length, y),
+                                 6)
+                pygame.draw.line(screen,
+                                 (255, 0, 0),
+                                 (x, y),
+                                 (x + length * hp_ratio, y),
+                                 4)
+
+                text_surface = self.world.font.render(str(self.species_cnt), True, (255, 255, 255))
+                self.world.screen.blit(text_surface, (height_pos[0] + 0.6 * width, height_pos[1] + 0.45 * width))
 
     def _get_movement_difficulty(self, tile_to_move):
         movement_difficulty = 2.0
@@ -241,6 +264,7 @@ class Creature:
 
             obs.extend(sub_obs)
 
+        obs = np.array(obs)
         return obs
         
     def _eat(self, relative_tile_pos: tuple[int, int]):
