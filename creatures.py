@@ -1,19 +1,27 @@
 import random
+import warnings
 
 import pygame
 import numpy as np
 
+import world_properties
+
+
 class Creature:
+    NAME: str = "cow"
     MAX_HP: float = 10.0
     MAX_MOVEMENT_POINTS: float = 10.0
     MAX_FOOD_SUPPLY: float = 10.0
     CONSUMABLE_FOOD_TYPES: tuple[str, ...] = ("grass",)  # "fruit", "meat", "rotten meat"
     MAX_SPECIES_CNT: int = 10  # species amount the tile cannot overreach this value
-    CREATURE_ID: int = 1  # Zero 0 reserved for no creature. Used by agents to distinguish between different species.
+    CREATURE_ID: int = world_properties.COW_ID  # Zero 0 reserved for no creature. Used by agents to distinguish between different species.
+    CREATURE_NORMALIZED_ID: float = np.tanh(CREATURE_ID)  # Normalization for NN training
     VISION_DISTANCE: int = 1  # defines how far the creature can see
     DAYS_TO_BODY_BE_ROTTEN = 15  # body disappears after this number of days
-    CHANCE_OF_BIRTH = 0.005  # on new day if the creature is in good condition there is chance to increase
+    CHANCE_OF_BIRTH = 0.01  # 0.005  # on new day if the creature is in good condition there is chance to increase
     # population per each existing creature in stack
+    IS_AFFECTING_ROADS: bool = True  # defines if the creature can make a road by frequent walking on a tile
+    SINGLE_CREATURE_STRENGTH: float = 1.0  # defines how much damage a creature per unit does during attack
 
     OBSERVATION_SPACE: tuple[int,] = (42,)  # 106 for radius 2
     ACTION_SPACE: int = 27  # [{-1, 0, 1}, {-1, 0, 1}, {0, 1, 2}
@@ -101,28 +109,43 @@ class Creature:
                 print("body is deleted")
             return True
 
+        newborn_creatures = 0
         for i in range(self.species_cnt):
-            if (self.MAX_SPECIES_CNT > self.species_cnt > 1
+            if self.MAX_SPECIES_CNT <= self.species_cnt:
+                break
+            if (self.species_cnt > 1
                     and self.current_hp > 0.9 * self.MAX_HP
                     and self.current_food > 0.75 * self.MAX_FOOD_SUPPLY
                     and random.random() < self.CHANCE_OF_BIRTH):
-                self.species_cnt += 1
-
+                newborn_creatures += 1
+        self.species_cnt += newborn_creatures
+        self.species_cnt_change += newborn_creatures
 
         return False
 
     def make_action(self):
+        if self.verbose > 0:
+            print(f"creature {self} acts")
+        if self.species_cnt < 1:
+            warnings.warn("a dead creature is trying to make a move")
+            self.apply_damage(1000.0)
+            return
 
         if self.days_since_death > 0:
             # TODO implement activities happening with the body
             return
+
+        if self.agent is None:
+            warnings.warn("a creature with no agent was requested to make an action")
+            return
+
         has_done_action = False
 
-        while True:
+        while self.species_cnt > 0 and self.days_since_death < 1:
             # action tuple (tile relative number {(-1, -1), (1,0), (-1,1), etc}, action number)
             action = self.agent.predict(self.observation)
             if self.verbose > 0:
-                print(f"action: {action}")
+                print(f"action: {action}, ({self.AVAILABLE_ACTIONS[action[1]]})")
             if self.AVAILABLE_ACTIONS[action[1]] == "move":
                 if action[0] == (0, 0):
                     self._sleep(has_done_action)
@@ -134,13 +157,19 @@ class Creature:
             elif self.AVAILABLE_ACTIONS[action[1]] == "split/attack":
                 self._split_or_attack(action[0])
             else:
-                print(f"Warning, unknown action is called, action index: {action[1]}")
+                warnings.warn(f"Warning, unknown action is called, action index: {action[1]}")
+                break
 
             new_obs = self._get_obs()
             self.agent.learn(self.observation, new_obs, action)
             self.observation = new_obs
             self.species_cnt_change = 0  # restoring the indication of death/birth
             has_done_action = True
+            if self.species_cnt < 1 or self.days_since_death > 0:
+                warnings.warn("dead creature was in the middle of making an action, interrupting...")
+                self.apply_damage(1000)
+                break
+
             if self.movement_points < 1e-4:
                 break
 
@@ -149,26 +178,27 @@ class Creature:
         if not isinstance(self.texture, tuple) and self.world is not None:
             width = self.world.tile_width
             self.scaled_texture = pygame.transform.scale(self.texture,
-                                                         (0.5 * width, 0.5 * width))
+                                                         (1.00 * width, 1.00 * width))  # previously 0.5*...
 
-    def draw(self, screen, pos, width, height_scale=None, height_pos=None):
+    def draw(self, screen, pos):  #, width=None, height_scale=None, height_pos=None):
+        width = self.world.tile_width
         height_pos = [pos[0] + self.tile.height_level * self.world.height_direction[0] * self.world.height_scale,
                       pos[1] + self.tile.height_level * self.world.height_direction[1] * self.world.height_scale]
 
-        if isinstance(self.texture, tuple):
+        if isinstance(self.texture, tuple):  # color instead of texture
             if self.days_since_death > 0:
                 # drawing a dead body
                 pygame.draw.rect(screen, (30, 30, 30), (height_pos[0], height_pos[1], 0.5 * width, 0.5 * width))
             else:
-                pygame.draw.rect(screen, self.texture, (height_pos[0] + 0.25 * width,
-                                                        height_pos[1] + 0.45 * width,
-                                                        0.5*width,
-                                                        0.5*width))
-        else:
+                pygame.draw.rect(screen, self.texture, (height_pos[0] + 0.05 * width,
+                                                        height_pos[1] + 0.05 * width,  # 0.45*width
+                                                        1.00*width,
+                                                        1.80*width))
+        else:  # in case a texture is used
             if self.days_since_death > 0:
                 pygame.draw.rect(screen, (30, 30, 30), (height_pos[0], height_pos[1], 0.5 * width, 0.5 * width))
             else:
-                self.world.screen.blit(self.scaled_texture, (height_pos[0] + 0.25 * width, height_pos[1] + 0.45 * width))
+                self.world.screen.blit(self.scaled_texture, (height_pos[0] - 0.10 * width, height_pos[1] - 0.10 * width))
 
         if self.days_since_death < 1:
 
@@ -188,8 +218,8 @@ class Creature:
                                  (x + length * hp_ratio, y),
                                  4)
 
-                text_surface = self.world.font.render(str(self.species_cnt), True, (255, 255, 255))
-                self.world.screen.blit(text_surface, (height_pos[0] + 0.6 * width, height_pos[1] + 0.45 * width))
+            text_surface = self.world.font.render(str(self.species_cnt), True, (255, 255, 255))
+            self.world.screen.blit(text_surface, (height_pos[0] + 0.6 * width, height_pos[1] + 0.45 * width))
 
     def _get_movement_difficulty(self, tile_to_move):
         movement_difficulty = 2.0
@@ -210,7 +240,7 @@ class Creature:
 
     def apply_damage(self, damage: float):
         self.current_hp -= damage
-        if self.current_hp < 0 and self.days_since_death == 0:
+        if self.current_hp < 0.001:  # and self.days_since_death == 0:
             if damage < 1:
                 if random.random() < damage:
                     dead_cnt = 1
@@ -218,14 +248,41 @@ class Creature:
                     dead_cnt = 0
             else:
                 dead_cnt = random.randint(1, round(damage))
-            self.species_cnt_change = dead_cnt
+            self.species_cnt_change = -dead_cnt
             self.species_cnt -= dead_cnt
+            if dead_cnt > 0:
+                creature_copy = self.__class__(agent=None,
+                                               self_tile=self.tile,
+                                               texture=self.texture,
+                                               creature_to_copy=self)
+                creature_copy.days_since_death = 1
+                self.tile.add_dead_creature(dead_cnt, creature_copy)  # self)
             if self.species_cnt < 1:
+                self.species_cnt = 0
+                self.world.remove_creature(self)
                 self.days_since_death = 1
-                print("the creature died")
+                if self.verbose > 0:
+                    print(f"the creature died {self}")
 
     def apply_heal(self, hp_restored: float):
         self.current_hp = min(self.MAX_HP, self.current_hp + hp_restored)
+
+    def _attack(self, other_creature):
+        own_attack = self.species_cnt * self.SINGLE_CREATURE_STRENGTH
+        other_attack = other_creature.species_cnt * other_creature.SINGLE_CREATURE_STRENGTH
+        min_damage = 0.1  # for some reason an attack can deal a negative damage, idk why
+        own_attack = max(min_damage, own_attack)
+        other_attack = max(min_damage, other_attack)
+
+        self.apply_damage(other_attack)
+        other_creature.apply_damage(own_attack)
+        food_consumed = 0.5
+        self.current_food -= food_consumed
+        other_creature.current_food -= food_consumed * 0.5
+        self.movement_points -= 1.0
+        if self.verbose > 0:
+            print(f"Creature {self}, cnt={self.species_cnt} attacks \n {other_creature}, cnt={other_creature.species_cnt} "
+                  f"corresponding damage {own_attack} and {other_attack}")
 
     def _consume_food(self, food_consumed, enable_heal=False):
         self.current_food -= food_consumed
@@ -237,12 +294,13 @@ class Creature:
 
     def _get_obs(self):
         # first set of own states, next state of the tiles in vision range
+        # all data is normalized to [-1, 1] range
         obs = [
-            self.CREATURE_ID,  # will be useful when meeting other creatures
-            self.current_hp,
-            self.current_food,
-            self.movement_points,
-            self.species_cnt,
+            self.CREATURE_NORMALIZED_ID,  # will be useful when meeting other creatures
+            self.current_hp / self.MAX_HP,
+            self.current_food / self.MAX_FOOD_SUPPLY,
+            self.movement_points / self.MAX_MOVEMENT_POINTS,
+            self.species_cnt / self.MAX_SPECIES_CNT,
             self.species_cnt_change,
         ]
         nearby_tiles = self.tile.get_surrounding_tile(self.VISION_DISTANCE)
@@ -253,11 +311,11 @@ class Creature:
                 creature_id = 0
                 creature_cnt = 0
             else:
-                creature_id = creature.CREATURE_ID
-                creature_cnt = creature.species_cnt
+                creature_id = creature.CREATURE_NORMALIZED_ID
+                creature_cnt = creature.species_cnt / creature.MAX_SPECIES_CNT
             sub_obs = [
                 int(has_vegetation),
-                self._get_movement_difficulty(tile),  # reserved for movement cost
+                self._get_movement_difficulty(tile),  # reserved for movement cost. Probably needs normalization
                 creature_id,  # Other creature id if it is presented at the tile
                 creature_cnt,  # Other creature count if it is presented at the tile
             ]
@@ -274,7 +332,9 @@ class Creature:
         else:
             self.movement_points -= 2.0
         tile_to_eat = self.tile.world.get_tile_by_index(self.tile.in_map_position, relative_tile_pos)
-        has_eaten_food = tile_to_eat.consume_vegetation(self.CONSUMABLE_FOOD_TYPES)
+        #  has_eaten_food = tile_to_eat.consume_vegetation(self.CONSUMABLE_FOOD_TYPES)
+        has_eaten_food = tile_to_eat.eat_from_tile(self.CONSUMABLE_FOOD_TYPES)
+
         if self.verbose > 0:
             print(f"eating at {relative_tile_pos}, success = {has_eaten_food}")
         if has_eaten_food:
@@ -295,8 +355,18 @@ class Creature:
 
     def _split_or_attack(self, relative_tile_pos: tuple[int, int]):
         """ If tile is empty splits half of the creature on the new tile. Otherwise attacks ANY creature on the tile"""
+        if relative_tile_pos == (0, 0):  # no action is reserved for splitting into own tile
+            self.current_food -= 0.05
+            self.movement_points -= 0.1
+            return
+
         new_tile = self.world.get_tile_by_index(self.tile.in_map_position, relative_tile_pos)
         other_creature = self.world.get_creature_on_tile(new_tile)
+        # if self is other_creature:  # checking if the creature attacks itself
+        #     if self.verbose > 0:
+        #         print("suicide attempt (creature is trying to attack itself")
+        #     other_creature = None
+
         if other_creature is None:
             if self.species_cnt > 1:
                 self.current_food -= 0.05  # subtracted from both creatures
@@ -315,7 +385,7 @@ class Creature:
                 self.current_food -= 0.05
                 self.movement_points -= 0.1
         else:
-            pass  # TODO implement attacking
+            self._attack(other_creature)  # attack already consumes food and movement
 
     def _move(self, relative_tile_pos: tuple[int, int]):
 
@@ -338,19 +408,34 @@ class Creature:
             if other_creature.CREATURE_ID == self.CREATURE_ID:
                 if self.species_cnt == self.MAX_SPECIES_CNT or other_creature == self.MAX_SPECIES_CNT:
                     self._consume_food(0.005)
+                    self.movement_points -= 0.1
                 if self.species_cnt + other_creature.species_cnt <= self.MAX_SPECIES_CNT:  # creatures fully merge
                     other_creature.species_cnt += self.species_cnt
-                    self.world.delete_creature(self)
                     self.movement_points = 0.0  # to block any further action
+                    self.world.remove_creature(self)
                 else:
                     remaining_species = self.species_cnt + other_creature.species_cnt - self.MAX_SPECIES_CNT
                     other_creature.species_cnt = self.MAX_SPECIES_CNT
                     self.species_cnt = remaining_species
                     self._consume_food(0.05)
                     self.movement_points -= 0.5
-
             else:
-                pass  # TODO only peacefull option is implemented yet
+                self._attack(other_creature)  # attack already consumes food and movement
 
 
-    
+
+class Wolf(Creature):
+    MAX_HP: float = 10.0
+    MAX_MOVEMENT_POINTS: float = 12.0
+    MAX_FOOD_SUPPLY: float = 15.0
+    CONSUMABLE_FOOD_TYPES: tuple[str, ...] = (world_properties.MEAT,)  # "fruit", "meat", "rotten meat"
+    MAX_SPECIES_CNT: int = 10  # species amount the tile cannot overreach this value
+    CREATURE_ID: int = world_properties.WOLF_ID  # Zero 0 reserved for no creature. Used by agents to distinguish between different species.
+    CREATURE_NORMALIZED_ID: float = np.tanh(CREATURE_ID)  # Normalization for NN training
+    VISION_DISTANCE: int = 1  # defines how far the creature can see
+    CHANCE_OF_BIRTH = 0.020  # on new day if the creature is in good condition there is chance to increase
+    # population per each existing creature in stack
+    SINGLE_CREATURE_STRENGTH: float = 4.0  # defines how much damage a creature per unit does during attack
+
+    OBSERVATION_SPACE: tuple[int,] = (42,)  # 106 for radius 2
+    ACTION_SPACE: int = 27  # [{-1, 0, 1}, {-1, 0, 1}, {0, 1, 2}

@@ -5,10 +5,13 @@ class Vegetation:
 
     MAX_CNT = 1  # maximum number of certain vegetation_dict type per tile
     MAX_LENGTH = 1.0  # visual length of vegetation_dict as ration of tile width
-    MIN_NEW_PLANT_SIZE = 0.05 # plant dies if its size below this value
+    MIN_NEW_PLANT_SIZE = 0.05  # plant dies if its size below this value
     MIN_PLANT_SIZE = 0.1  # minimum size of a newly created plant
     MIN_MOISTURE_REQUIRED = 0.05  # if surrounding tile don't provide enough moisture, plants will fade
     RANDOM_DECAY_PROBABILITY = 0.005  # probability that a plant will fade a bit
+    PLANTING_PROBABILITY_COEFF = 0.2  # Affects how frequently the plant will spread its seeds.
+    # Original 0.2, but lower might be more realistic at a big matp
+
     TYPE = "base class"
 
     def __init__(self, self_tile):
@@ -21,8 +24,8 @@ class Vegetation:
         return Vegetation(tile)
 
     def plant(self, tile, growing_power=-1.0):
-        if not self.TYPE in tile.vegetation_dict:
-            tile.vegetation_dict[self.TYPE] = self._create_entity(tile)
+        if self.TYPE not in tile.vegetation_dict:
+            tile.vegetation_dict[self.TYPE] = self._create_entity(tile)  # TODO could a __class__ property be used here instead of this?
 
         if tile.vegetation_dict[self.TYPE].size < 0:
             tile.vegetation_dict[self.TYPE].size = self.MIN_NEW_PLANT_SIZE + random.random() * 0.5
@@ -32,9 +35,9 @@ class Vegetation:
             new_plants_cnt = min(self.MAX_CNT - tile.vegetation_dict[self.TYPE].count,
                                  1 + int(random.random() * 0.1 * growing_power))
         tile.vegetation_dict[self.TYPE].count += new_plants_cnt
+
         for _ in range(new_plants_cnt):
-            new_plant = [random.random() * 0.7 + 0.3,
-                         # plant size, max 1
+            new_plant = [random.random() * 0.7 + 0.3,  # plant size, max 1
                          random.random(),  # X coordinate
                          random.random() * 0.9 + 0.05,  # Y coordinate
                          ]
@@ -45,10 +48,10 @@ class Vegetation:
         if self.size < self.MIN_PLANT_SIZE:
             self.count -= random.randint(1, 3)
             if self.count > 0:
-                self.vegetation_list = self.vegetation_list[:self.count]
+                self.vegetation_list = self.vegetation_list[:self.count]  # clearing extra grass for visuals
+                self.size = self.MIN_PLANT_SIZE
             else:
                 del self.tile.vegetation_dict[self.TYPE]
-
 
     def prepare_step(self):
         total_moisture = 0
@@ -62,16 +65,16 @@ class Vegetation:
             self.size *= 1 - 0.01 - random.random() * 0.05 - 0.01 * (1 - self.tile.nutrition)
         else:
             self.size *= 1 + 0.01 + random.random() * 0.1 * self.tile.nutrition
-            self.size = min(self.size, 1)
+        self.size = min(self.size, 1)
 
         self.clear_dead_plants()
 
     def step(self, update_visuals):
         growth_power = self.size * self.count
         surround_tiles = self.tile.surround_tiles_dict["012"]
-        planting_probability = 0.2 * growth_power / (self.MAX_CNT * len(surround_tiles))
+        planting_probability = self.PLANTING_PROBABILITY_COEFF * growth_power / (self.MAX_CNT * len(surround_tiles))
         for tile in surround_tiles:
-            if planting_probability > random.random():
+            if planting_probability > random.random() and tile.water.relative_height < 1e-5:  # no planting in water
                 self.plant(tile)
 
     def draw(self, screen, pos, width, height_scale, height_pos):
@@ -89,6 +92,8 @@ class Grass(Vegetation):
         return Grass(tile)
 
     def draw(self, screen, pos, width, height_scale, height_pos):
+        # if self.size > 1 or self.size < 1e-4:
+        #     print(self.size)
         x_min = height_pos[0]
         y_min = height_pos[1]
         for plant in self.vegetation_list:

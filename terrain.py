@@ -1,18 +1,22 @@
 import random
 import time
+import warnings
 
 import pygame
 import numpy as np
 import world_properties
+from world_properties import WorldProperties
 import vegetation
-import creatures
+from creatures import Creature
 import agents
 
 
 class Terrain:
     height_direction = (np.cos(np.deg2rad(210)),
                         np.sin(np.deg2rad(210)))  # with the height increase tile is move towards this vector
+    HEIGHT_SCALE_COEFF = 0.75  # defines offset of tall object from the small ones
     HOURS_PER_STEP = 6  # how many hours are passed after each mini-step is made
+
 
     def __init__(self, screen, size: tuple[int, int], enable_visualization=True,
                  enable_map_loop_visualization=False,
@@ -33,7 +37,7 @@ class Terrain:
         self.camera_visible_y_range = []  # coordinates of start and end of visible tiles along y directions
         self.camera_visible_tiles_cnt = 0  # number of tiles visible on the screen at the moment
         self.tile_width = 30
-        self.height_scale = self.tile_width * 0.5
+        self.height_scale = self.tile_width * self.HEIGHT_SCALE_COEFF  # original self.tile_width * 0.5
         self.enable_visualization = enable_visualization
         self.font = pygame.font.SysFont(None, 48)
 
@@ -61,7 +65,7 @@ class Terrain:
         self.terrain_map = tuple(tuple(inner) for inner in self.terrain_map)
         self.camera_move("update")
 
-    def add_creature(self, creature: creatures.Creature, position: None | tuple[int, int] = None) -> None:
+    def add_creature(self, creature: Creature, position: None | tuple[int, int] = None) -> None:
         """
         :param creature:
         :param position: coordinates on the map or None for random position
@@ -80,24 +84,36 @@ class Terrain:
         time_before_step = time.time()
 
         if self.creatures and self.current_time_hours <= 24 - self.HOURS_PER_STEP:  # in case we have any creatures, iterate through them
-            for creature in self.creatures:
+            tmp_creatures_list = self.creatures.copy()  # because some of the creatures may die during actions
+            # and will be excluded from self.creatures list
+            for creature in tmp_creatures_list:
                 creature.make_action()
+            # for creature in self.creatures:
+            #     creature.make_action()
             self.current_time_hours += self.HOURS_PER_STEP
         else:
             self.current_time_hours = 0
+            sum_height = 0  # for logging only
             for row in range(self.map_size[0]):
                 for col in range(self.map_size[1]):
                     self.terrain_map[row][col].prepare_step()
             for row in range(self.map_size[0]):
                 for col in range(self.map_size[1]):
                     self.terrain_map[row][col].step(self.enable_visualization)  #(surrounding_tiles, self.enable_visualization)
-            i = 0
-            while i < len(self.creatures):
-                is_rotten = self.creatures[i].new_day()
-                if is_rotten:
-                    self.creatures.pop(i)
-                else:
-                    i += 1
+                    sum_height += self.terrain_map[row][col].height_level
+            if self.verbose > 0:
+                print(f"Average land height: {sum_height / (self.map_size[0] * self.map_size[1])}")
+
+            # previously dead creature belong to the world, but now it belongs to the Tile
+            # i = 0
+            # while i < len(self.creatures):
+            #     is_rotten = self.creatures[i].new_day()
+            #     # if is_rotten:
+            #     #     self.creatures.pop(i)
+            #     # else:
+            #       i += 1
+            for creature in self.creatures:
+                creature.new_day()
 
             self.total_steps += 1
 
@@ -126,11 +142,19 @@ class Terrain:
                 return creature
         return None
 
-    def delete_creature(self, creature):
+    def remove_creature(self, creature: Creature) -> bool:
+        """
+                Removes creature from the world
+                :param creature:
+                :return: True if creature was removed successfully, otherwise False (in case creature does not exist)
+        """
         if creature in self.creatures:
             self.creatures.remove(creature)
             if self.verbose > 0:
                 print(f"creature deleted, total creature count: {len(self.creatures)}")
+            return True
+        else:
+            return False
 
     def _get_surrounding_tiles(self, row: int, col: int, tile_map: list[list[...]], search_diameter=3) -> list[list[...]]:
         """
@@ -182,7 +206,7 @@ class Terrain:
         else:
             raise "unknown camera motion direction"
 
-        self.height_scale = self.tile_width * 0.5
+        self.height_scale = self.tile_width * self.HEIGHT_SCALE_COEFF
         if is_camera_rescaled:
             if self.tile_width < 30:
                 self.font = pygame.font.SysFont(None, 30)
@@ -232,7 +256,7 @@ class Terrain:
             for creature in self.creatures:
                 row, col = creature.tile.in_map_position
                 cur_pos = [self.camera_pos[0] + self.tile_width * row, self.camera_pos[1] + self.tile_width * col]
-                creature.draw(self.screen, cur_pos, self.tile_width)
+                creature.draw(self.screen, cur_pos)
 
         else:
             print("camera loop visualization is not yet implemented")  # TODO
@@ -244,7 +268,7 @@ class Water:
     FLOW_RATE_TIME_CONSTANT = 0.5  # defines the speed at which water propagates into nearby tiles
     MAX_SOURCE_OUTPUT = 0.05
     MIN_SOURCE_OUTPUT = 0.001
-    MOISTURE_TO_WATER_LEVEL_COEFF = 0.5  # defines the ratio at which water level increases wrt to moisture increase
+    MOISTURE_TO_WATER_LEVEL_COEFF = 0.10  # defines the ratio at which water level increases wrt to moisture increase
 
     def __init__(self, self_tile):
         self.tile = self_tile  # reference to the tile that posses the water
@@ -255,7 +279,6 @@ class Water:
         self.flow_out = 0
         self.moisture_lines = []
         self.source_intensity = 0
-
 
     def add_water_source(self, intensity: float):
         self.source_intensity = intensity
@@ -278,9 +301,14 @@ class Water:
                 self.flow_out += single_tile_flow_rate_out
 
     def step(self, update_visuals):
+
+        # TODO compute absorbion level only on init and when the tile height changes
         absorption_level = 0
-        for soil_type in self.tile.content_list:  # taking absorption proportionally to the soil %
-            absorption_level += world_properties.soil_types[soil_type[0]]["water absorption"] * soil_type[1]
+        for soil_type in self.tile.content_dict:  # taking absorption proportionally to the soil %
+            absorption_level += world_properties.soil_types[soil_type]["water absorption"] * self.tile.content_dict[soil_type]
+
+        absorption_level = absorption_level * (1 - 0.95 * self.tile.height_level)  # the higher tile, the smaller absorbtion
+
         if self.tile.vegetation_dict:  # presence of vegetation_dict reduces water  absorption
             absorption_level *= 0.5
 
@@ -309,6 +337,20 @@ class Water:
                     self.moisture_lines.append([x_start, x_end, y, line_width])
 
 
+        height_diff = np.tanh(self.flow_in - self.flow_out) * 3e-4  # limiting the maximum height difference per step
+
+        if abs(height_diff) > 1e-7:  # condition to avoid no water tiles to change accidentally
+            # print("land difference", height_diff)
+            if height_diff < 0:
+                pass  # initially rock must have been washed out by the stream, but the water was digging well on itself
+
+            else:
+                if self.flow_out < 1e-3:  # if it is closer to be a lake making it a sandy bottom
+                    self.tile.change_height_and_content(-abs(height_diff) * 0.01, 'sand')
+                else:
+                    self.tile.change_height_and_content(-abs(height_diff), 'rock')  # if it is a river style, making rocky bottom
+                # pass
+                # self.tile.change_height_and_content(0.01 * height_diff, 'sand')  # initial approach
 
         self.flow_in = 0.0
         self.flow_out = 0.0
@@ -339,24 +381,30 @@ class Water:
                                      line[3])
 
 
+
 class Tile:
 
-    # TODO cache tile states to b faster obtained by the creatures
+    # TODO cache tile states to faster obtained by the creatures
 
     def __init__(self, world, surrounding_tiles: list[list[...]], in_map_position):
         """
         Generates random tile
         """
-        self.height_level: float = random.random()
+        self.height_level: float = random.random()  # height of the tile, can lay in range [0, 1]
         self.world = world
-        self.water = Water(self)
-        self.content_list: list = []
-        self.modifiers = []
-        self.vegetation_dict = {}
-        self.surround_tiles_dict = {}
-        self.nutrition = 0
-        self.in_map_position: tuple[int, int] = in_map_position   # (row, col) indexes of the tile in the world
+        self.water: Water = Water(self)  # wouldn't it be better to inherit water instead of making an instance?!
+        self.content_dict: dict = {}
+        self.modifiers: list = []
+        self.surround_tiles_dict: dict = {}
+        self.in_map_position: tuple[int, int] = in_map_position  # (row, col) indexes of the tile in the world
 
+        self.vegetation_dict: dict = {}
+        self.nutrition = 0
+
+        self.dead_cnt: int = 0  # number of dead bodies on the tile
+        self.dead_creature: Creature | None = None  # temporary variable, will be used for drawing mostly
+
+        self.texture: tuple[float, float, float] | str | None = None  # if None, auto texture will be assigned
 
         flattened_tiles = [item for sublist in surrounding_tiles if sublist is not None for item in sublist if item is not None]
 
@@ -372,10 +420,13 @@ class Tile:
         sum_content = 0
         for key in highest_content_types:
             sum_content += tile_content[key]
-            self.content_list.append([key, tile_content[key]])
-        for content in self.content_list:
-            content[1] /= sum_content  # normalizing total content to [0, 1]
-            self.nutrition += content[1] * world_properties.soil_types[content[0]]["nutritional value"]
+            self.content_dict[key] = tile_content[key]
+        for key in self.content_dict:
+            self.content_dict[key] /= sum_content  # normalizing total content to [0, 1]
+            #self.nutrition += self.content_dict[key] * world_properties.soil_types[key]["nutritional value"]
+
+        self._update_nutrition()  # computing nutrition of the soil based on soils in the tile
+        self._set_tile_texture_by_soil()
 
         for generation_property in world_properties.world_generation_properties["generation probabilities"]:
             if random.random() < generation_property[1]:
@@ -391,6 +442,25 @@ class Tile:
                     self.vegetation_dict["grass"].plant(self)
 
                 print("added ", generation_property[0])
+
+    def _set_tile_texture_by_soil(self):
+        """
+        Updates tile texture based on soil content. Does nothing if custom texture is applied
+        :return:
+        """
+        if isinstance(self.texture, str):  # if custom texture is applied doing nothing
+            return
+
+        highest_content_type = sorted(self.content_dict, key=self.content_dict.get, reverse=True)[0]
+        self.texture = world_properties.soil_types[highest_content_type]["color"]
+
+    def _update_nutrition(self):
+        """
+        Computes nutrition of the soil based on soils in the tile, updates corresponding variable
+        :return: None
+        """
+        for key in self.content_dict:
+            self.nutrition += self.content_dict[key] * world_properties.soil_types[key]["nutritional value"]
 
     def has_vegetation(self, vegetation_list: tuple[str, ...]):
         has_vegetation = False
@@ -408,6 +478,88 @@ class Tile:
             return False
         del self.vegetation_dict[plant_key]
         return True
+
+    def eat_from_tile(self, edible_options: tuple) -> bool:
+        """
+        Eats a food the list, meat consumption is in priority
+        :param edible_options: tuple of all things a creature can eat
+        :return: True if there was food and it was consumed. Otherwise returns False.
+        The return will be replaced with float consumed food nutrition value in future
+        """
+
+        # meat consumption case
+        if world_properties.MEAT in edible_options and self.dead_cnt > 0:
+            self.erase_dead_creature(1)
+            return True
+
+        # vegetation consumption
+        return self.consume_vegetation(edible_options)
+
+    def add_dead_creature(self, bodies_cnt: int, creature: Creature):
+        """
+        Adds a new dead body to the tile, that will be considered as meet
+        :param bodies_cnt: number of new bodies
+        :param creature: Creature to be used for drawing dead body
+        :return:
+        """
+        self.dead_cnt += bodies_cnt
+        self.dead_creature = creature
+
+    def erase_dead_creature(self, bodies_cnt: int):
+        """
+        Reduces the number of bodies on the tile by a given amount.
+        :param bodies_cnt: positive value of number of the bodies to be erased
+        :return:
+        """
+        if bodies_cnt < 1:
+            warnings.warn(f"Incorrect value of the erased bodies was given, bodies_cnt = {bodies_cnt}")
+            return
+        self.dead_cnt -= bodies_cnt
+        if self.dead_cnt < 1:
+            self.dead_cnt = 0
+            self.dead_creature = None
+
+    def change_height_and_content(self,
+                                  height_difference: float,
+                                  added_soil_type: str | None = None,
+                                  same_material_change_coeff: float = 1.0) -> None:
+        """
+        Modify height of the tile by a given value. Height will be maintained in [0, 1] range
+        Soil can be added, proportional to the height difference
+        :param height_difference: Value to change the height (positive or negative)
+        :param added_soil_type: if not None this content will be added to the tile in proportion with height
+        :param same_material_change_coeff [0, 1] scale the change of height proportional to content of the replacing material
+        1 - height will not be changed at all if the tile is single material, 0 - material will be change anyway;
+        otherwise in-between linear interpolation
+        :return:
+        """
+
+        same_material_change_coeff = min(1, max(0, same_material_change_coeff))
+        desired_soil_relative_content_ratio = 0.0
+        if added_soil_type is not None:
+            content_sum = 0
+            for value in self.content_dict.values():
+                content_sum += value
+
+            if added_soil_type not in self.content_dict:
+                self.content_dict[added_soil_type] = 0
+
+            added_value = content_sum * abs(height_difference)
+            self.content_dict[added_soil_type] += added_value
+            total_soil_types = len(self.content_dict)
+            for key in list(self.content_dict.keys()):
+                if key == added_soil_type:
+                    desired_soil_relative_content_ratio = self.content_dict[added_soil_type] / content_sum
+                    continue
+                self.content_dict[key] = max(0.0, self.content_dict[key] - added_value / total_soil_types)
+                if self.content_dict[key] < 1e-6:
+                    del self.content_dict[key]
+
+        total_height_change = height_difference * (1 - desired_soil_relative_content_ratio * same_material_change_coeff)
+        self.height_level = max(0, min(1, self.height_level + total_height_change))
+
+        self._update_nutrition()
+        self._set_tile_texture_by_soil()
 
     def _set_surrounding_tiles(self, surrounding_tiles):
         self.surround_tiles_dict["1"] = tuple(surrounding_tiles[1])
@@ -429,6 +581,10 @@ class Tile:
             self.vegetation_dict[key].prepare_step()
 
     def step(self, update_visuals=False):
+        if self.dead_cnt > 0:
+            if random.random() < WorldProperties.body_disappear_chance:
+                self.erase_dead_creature(1)  # one body is erased at a time
+
         for modifier in self.modifiers:
             pass
             # water is processed automatically inside of Water class
@@ -439,14 +595,13 @@ class Tile:
         for key in list(self.vegetation_dict.keys()):  # call via listed keys is due to potential deletion of a key
             self.vegetation_dict[key].step(update_visuals)
 
-
     def draw(self, screen, pos, width):
         height_scale = width * 0.5  # TODO remove this value from the draw function since it is accessasble via self.world.height_scale
-        texture_color = world_properties.soil_types[self.content_list[0][0]]["color"]
+        #  texture_color = world_properties.soil_types[self.content_list[0][0]]["color"]   # OBSOLETE, NOW THERE IS self.texture
         height_pos = [pos[0] + self.height_level * self.world.height_direction[0] * self.world.height_scale,
                       pos[1] + self.height_level * self.world.height_direction[1] * self.world.height_scale]
         # for now drawing the highest content only
-        pygame.draw.rect(screen, texture_color, (height_pos[0], height_pos[1], width, width))
+        pygame.draw.rect(screen, self.texture, (height_pos[0], height_pos[1], width, width))
 
         # drawing land modifiers
         for modifier in self.modifiers:
@@ -459,6 +614,8 @@ class Tile:
 
 
         self.water.draw(screen, pos, width, height_scale, height_pos)
+        if self.dead_creature is not None:
+            self.dead_creature.draw(screen, pos)
         for plant in self.vegetation_dict.values():  # iteration is due to multiple kinds of plants
             plant.draw(screen, pos, width, height_scale, height_pos)
 
