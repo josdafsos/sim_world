@@ -65,13 +65,16 @@ class Creature:
             self.days_since_death: int = creature_to_copy.days_since_death
             self.species_cnt_change: int = 0
 
-
         self.agent = agent
         self.tile = self_tile
         self.verbose = verbose
         self.world = None
 
-
+        # mapping from action index to a complex action structure
+        self.actions = [(x, y, z)
+                        for x in [-1, 0, 1]
+                        for y in [-1, 0, 1]
+                        for z in [0, 1, 2]]
 
         if isinstance(texture, str):
             self.texture = pygame.image.load("textures//" + texture).convert_alpha()
@@ -143,7 +146,7 @@ class Creature:
 
         while self.species_cnt > 0 and self.days_since_death < 1:
             # action tuple (tile relative number {(-1, -1), (1,0), (-1,1), etc}, action number)
-            action = self.agent.predict(self.observation)
+            action = self._idx_to_action(self.agent.predict(self.observation))
             if self.verbose > 0:
                 print(f"action: {action}, ({self.AVAILABLE_ACTIONS[action[1]]})")
             if self.AVAILABLE_ACTIONS[action[1]] == "move":
@@ -161,7 +164,7 @@ class Creature:
                 break
 
             new_obs = self._get_obs()
-            self.agent.learn(self.observation, new_obs, action)
+            self.agent.learn(self.observation, new_obs, self._action_to_idx(action))
             self.observation = new_obs
             self.species_cnt_change = 0  # restoring the indication of death/birth
             has_done_action = True
@@ -422,6 +425,19 @@ class Creature:
             else:
                 self._attack(other_creature)  # attack already consumes food and movement
 
+    def _action_to_idx(self, action):
+        """ Converts a complex action structure into its index """
+        (xy, z) = action  # converting action back to index
+        x, y = xy
+        x += 1
+        y += 1
+        action_idx = x * 9 + y * 3 + z  # TODO convert properly to action number
+        return np.array([action_idx])
+
+    def _idx_to_action(self, action_idx):
+        """ Converts action's index into a complex action structure """
+        x, y, action = self.actions[action_idx]  # self.actions[action_idx]
+        return ((x, y), action)
 
 
 class Wolf(Creature):

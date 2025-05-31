@@ -70,7 +70,7 @@ if __name__ == '__main__':
             world.draw()
             pygame.display.flip()  # Update the screen
 
-        time.sleep(2e-3)
+        # time.sleep(2e-3)
 
     # Quit pygame
     pygame.quit()
