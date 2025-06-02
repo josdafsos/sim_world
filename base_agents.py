@@ -67,9 +67,9 @@ class MemoryFrameStack:
         :param args:
         :param kwargs:
         """
-        # super().__init__(*args, **kwargs)
 
-        assert not hasattr(self, 'observation_space'), "MemoryFrameStack class must be initializaed before observation space attribute"
+        # TODO fix assertion to check if Frame stack initialized first. Right now it unexptedly asserts a wrong statement
+        # assert hasattr(self, 'observation_space'), "MemoryFrameStack class must be initializaed before observation space attribute"
         # if not hasattr(self, 'observation_space'):
         #     raise AttributeError('The child class does not have observation_space attribute')
 
@@ -96,6 +96,7 @@ class Observable:
         if isinstance(self, MemoryFrameStack):
             assert hasattr(self, '_memory_frame_stack_length'), "MemoryFrameStack must be inherited before any class containing Observable"
             self.observation_space = self.observation_space * self._memory_frame_stack_length
+
 
 
 class DQNBaseClass(Agent, Observable):
@@ -142,7 +143,6 @@ class DQNBaseClass(Agent, Observable):
         #self.observation_space = observation_space
         Observable.__init__(self, observation_space)
 
-        print(self.observation_space)
         self.sum_reward: float = 0  # total reward before model is saved
         self.sum_steps: int = 0  # total steps before model is saved
 
@@ -162,7 +162,7 @@ class DQNBaseClass(Agent, Observable):
             )
         else:
             self._policy_kwargs = policy_kwargs
-
+        print(Path(self.model_path + ".zip"))
         if Path(self.model_path + ".zip").exists():
             self._load_model()
         else:
@@ -192,6 +192,10 @@ class DQNBaseClass(Agent, Observable):
                          gradient_steps=self.gradient_steps,  # -1,  # suggested by Ming, default 1
                          batch_size=self.batch_size,
                          verbose=1, )
+
+        if self.verbose > 0:
+            print("New model was generated for ", self.AGENT_NAME)
+            print(self.model.policy)
 
     def _save_model(self):
         if self.verbose > 0:

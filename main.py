@@ -23,11 +23,11 @@ if __name__ == '__main__':
     world.multiple_steps(100)
 
     random_cow_agent = agents.RandomCow()
-    dqn_cow_agent = agents.DQNCow(verbose=1)
+    dqn_cow_agent = agents.DQNCow(verbose=1, agent_version="new_agent")
     memory_wolf_agent = agents.DQNMemoryWolf(verbose=1)
     # random_cow = creatures.Creature(random_cow_agent, texture="cow.png")
     cow_agent = dqn_cow_agent
-    dqn_wolf_agent = agents.DQNWolf(verbose=1)
+    # dqn_wolf_agent = agents.DQNWolf(verbose=1)
     #world.add_creature(creatures.Creature(random_cow_agent))
     #world.add_creature(creatures.Creature(random_cow_agent))
 

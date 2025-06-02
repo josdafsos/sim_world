@@ -25,7 +25,7 @@ class DQNCow(DQNBaseClass):
 
     AGENT_NAME = "dqn_cow"
 
-    def __init__(self, agent_version: str = "new _agent", verbose: int = 0):
+    def __init__(self, agent_version: str = "new_agent", verbose: int = 0):
 
         super().__init__(agent_version,
                          verbose,
@@ -75,11 +75,11 @@ class DQNWolf(DQNBaseClass):
         return reward
 
 
-class DQNMemoryWolf(DQNBaseClass, MemoryFrameStack):
+class DQNMemoryWolf(MemoryFrameStack, DQNBaseClass):
 
-    AGENT_NAME = "dqn_wolf"
+    AGENT_NAME = "dqn_memory_wolf"
 
-    def __init__(self, agent_version: str = "new _agent", verbose: int = 0):
+    def __init__(self, agent_version: str = "new_agent", verbose: int = 0):
 
         MemoryFrameStack.__init__(self, memory_frame_stack_length=10)
         DQNBaseClass.__init__(self, agent_version,
