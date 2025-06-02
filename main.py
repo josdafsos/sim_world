@@ -24,14 +24,15 @@ if __name__ == '__main__':
 
     random_cow_agent = agents.RandomCow()
     dqn_cow_agent = agents.DQNCow(verbose=1)
+    memory_wolf_agent = agents.DQNMemoryWolf(verbose=1)
     # random_cow = creatures.Creature(random_cow_agent, texture="cow.png")
     cow_agent = dqn_cow_agent
     dqn_wolf_agent = agents.DQNWolf(verbose=1)
     #world.add_creature(creatures.Creature(random_cow_agent))
     #world.add_creature(creatures.Creature(random_cow_agent))
 
-    world.add_creature(creatures.Creature(cow_agent, texture="cow_t.png", verbose=0))
-    # world.add_creature(creatures.Wolf(dqn_wolf_agent, texture="wolf_t.png", verbose=0))
+    world.add_creature(creatures.Cow(cow_agent, texture="cow_t.png", verbose=0))
+    world.add_creature(creatures.Wolf(memory_wolf_agent, texture="wolf_t.png", verbose=0))
 
 
 
@@ -50,7 +51,7 @@ if __name__ == '__main__':
             cnt += creature.species_cnt
             has_wolf = has_wolf or creature.CREATURE_ID == world_properties.WOLF_ID
         if cnt <= 5:
-            world.add_creature(creatures.Creature(cow_agent, texture="cow_t.png", verbose=0))
+            world.add_creature(creatures.Cow(cow_agent, texture="cow_t.png", verbose=0))
             # world.add_creature(creatures.Wolf(dqn_wolf_agent, texture="wolf_t.png", verbose=0))
         #if not has_wolf:
         #    world.add_creature(creatures.Wolf(dqn_wolf_agent, texture="wolf_t.png", verbose=0))

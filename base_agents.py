@@ -26,7 +26,7 @@ class Agent:
         pass
 
     def learn(self, old_obs, new_obs, action) -> None:
-        """ Implements learning of an agent. Unnecessary to implement if agent does not learn. """
+        """ Implements learning of an _agent. Unnecessary to implement if _agent does not learn. """
         pass
 
 
@@ -53,7 +53,54 @@ class EmptyEnvironment(gym.Env):
         return obs, reward, done, info
 
 
-class DQNBaseClass(Agent):
+class MemoryFrameStack:
+    """
+        Class implements stack of observation frames. Any class to inherit it must contain
+        observation_space attribute. Note: value of observation_space attribute will be modified.
+    """
+
+    def __init__(self, memory_frame_stack_length: int, *args, **kwargs):
+        """
+
+        :param memory_frame_stack_length: {positive integer}, if more than 1, requires several observation frames
+        to stack together
+        :param args:
+        :param kwargs:
+        """
+        # super().__init__(*args, **kwargs)
+
+        assert not hasattr(self, 'observation_space'), "MemoryFrameStack class must be initializaed before observation space attribute"
+        # if not hasattr(self, 'observation_space'):
+        #     raise AttributeError('The child class does not have observation_space attribute')
+
+        if memory_frame_stack_length < 1:
+            raise ValueError("memory_frame_stack_length must be positive")
+        else:
+            self._memory_frame_stack_length = memory_frame_stack_length
+        # self.observation_space = self._memory_frame_stack_length * np.array(self.observation_space)
+
+    def get_memory_frame_stack_length(self):
+        return self._memory_frame_stack_length
+
+
+class Observable:
+    """
+        Class to implement observation space.
+        Must be inherited by any agent that intended to have an observation space.
+        The class must be inherited after all observation space modifying classes.
+    """
+
+    def __init__(self, observation_space):
+        self.observation_space = np.array(observation_space)
+
+        if isinstance(self, MemoryFrameStack):
+            assert hasattr(self, '_memory_frame_stack_length'), "MemoryFrameStack must be inherited before any class containing Observable"
+            self.observation_space = self.observation_space * self._memory_frame_stack_length
+
+
+class DQNBaseClass(Agent, Observable):
+    """ Base class for all DQN agents """
+
     AGENT_NAME = "DQNBaseClass"
     AGENT_SAVING_FREQUENCY = 20_000
 
@@ -65,16 +112,37 @@ class DQNBaseClass(Agent):
                  batch_size: int = 32,
                  epsilon: float = 0.1,
                  gradient_steps: int = 1,
+                 policy_kwargs: dict = None,
+                 *args,
+                 **kwargs
                  ):
+        """
+
+        :param agent_version:
+        :param verbose: {0, 1, 2} if more than 0 adds status information into console,
+        1 - base information, 2 - all information
+        :param action_space:
+        :param observation_space: observation space in a single observation frame (without memory stack);
+        :param learning_rate:
+        :param batch_size:
+        :param epsilon: [0, 1] probability of taking a random action instead of using agent's predict function
+        :param gradient_steps: {-1, positive integer} number of gradient steps for training the agent, -1 for max steps
+        :param policy_kwargs: dictionary to define neural network topology. If None, default topology is used
+        :param memory_frame_stack_length: {positive integer} number of observation frames stacked together
+        """
+
+        # super().__init__(*args, **kwargs)
 
         self.model = None
         self.learning_rate: float = learning_rate  # for the model
         self.batch_size: int = batch_size  # for model
-        self.verbose: int = verbose  # if > 0 then outputs agent states and related info
+        self.verbose: int = verbose  # if > 0 then outputs _agent states and related info
         self.actions: list = []
         self.action_space = action_space
-        self.observation_space = observation_space
+        #self.observation_space = observation_space
+        Observable.__init__(self, observation_space)
 
+        print(self.observation_space)
         self.sum_reward: float = 0  # total reward before model is saved
         self.sum_steps: int = 0  # total steps before model is saved
 
@@ -86,11 +154,14 @@ class DQNBaseClass(Agent):
         self.model_path = os.path.join(utils.agents_folder, self.AGENT_NAME, agent_version)  # path to the model
 
         # defines the topology of the neural network
-        self.policy_kwargs = dict(
-            net_arch=[256, 256],  # hidden layers with VALUE neurons each
-            # activation_fn=torch.nn.ReLU
-            activation_fn=torch.nn.ELU
-        )
+        if policy_kwargs is None:
+            self._policy_kwargs = dict(
+                net_arch=[256, 256],  # hidden layers with VALUE neurons each
+                # activation_fn=torch.nn.ReLU
+                activation_fn=torch.nn.ELU
+            )
+        else:
+            self._policy_kwargs = policy_kwargs
 
         if Path(self.model_path + ".zip").exists():
             self._load_model()
@@ -98,6 +169,7 @@ class DQNBaseClass(Agent):
             self._get_new_model()
 
         self.model._logger = logger.configure(None)  # we don't need any logger, but without the configuration model crashes
+
 
     def _load_model(self):
         if self.verbose > 0:
@@ -113,7 +185,7 @@ class DQNBaseClass(Agent):
         self.model = DQN("MlpPolicy",
                          env,
                          learning_rate=self.learning_rate,
-                         policy_kwargs=self.policy_kwargs,
+                         policy_kwargs=self._policy_kwargs,
                          exploration_fraction=0.3,
                          exploration_initial_eps=0.07,
                          exploration_final_eps=0.07,
@@ -148,7 +220,7 @@ class DQNBaseClass(Agent):
         pass
 
     def _get_is_done(self, new_obs) -> bool:
-        """ Returns True if an episode is finished for the agent. Returns False otherwise """
+        """ Returns True if an episode is finished for the _agent. Returns False otherwise """
         pass
 
     def predict(self, obs) -> tuple[tuple[int, int], int]:
@@ -156,9 +228,7 @@ class DQNBaseClass(Agent):
             action_idx = random.randint(0, self.action_space-1)
         else:
             action_idx, _ = self.model.predict(obs, deterministic=True)
-        # x, y, action = self._idx_to_action(action_idx) # self.actions[action_idx]
-        return  action_idx # self._idx_to_action(action_idx)
-        #return ((x, y), action)
+        return action_idx
 
     def learn(self, old_obs, new_obs, action):
         reward = self._compute_reward(old_obs, new_obs, action)

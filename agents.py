@@ -1,14 +1,9 @@
+""" Module containing agents implementations """
+
 import random
-import numpy as np
-from pathlib import Path
 
-from stable_baselines3.common import logger
-
-
-from base_agents import Agent, DQNBaseClass
-
+from base_agents import Agent, DQNBaseClass, MemoryFrameStack
 import creatures
-from creatures import Creature
 
 
 class RandomCow(Agent):
@@ -30,7 +25,7 @@ class DQNCow(DQNBaseClass):
 
     AGENT_NAME = "dqn_cow"
 
-    def __init__(self, agent_version: str = "new agent", verbose: int = 0):
+    def __init__(self, agent_version: str = "new _agent", verbose: int = 0):
 
         super().__init__(agent_version,
                          verbose,
@@ -61,7 +56,7 @@ class DQNWolf(DQNBaseClass):
 
     AGENT_NAME = "dqn_wolf"
 
-    def __init__(self, agent_version: str = "new agent", verbose: int = 0):
+    def __init__(self, agent_version: str = "new _agent", verbose: int = 0):
 
         super().__init__(agent_version,
                          verbose,
@@ -80,4 +75,25 @@ class DQNWolf(DQNBaseClass):
         return reward
 
 
+class DQNMemoryWolf(DQNBaseClass, MemoryFrameStack):
 
+    AGENT_NAME = "dqn_wolf"
+
+    def __init__(self, agent_version: str = "new _agent", verbose: int = 0):
+
+        MemoryFrameStack.__init__(self, memory_frame_stack_length=10)
+        DQNBaseClass.__init__(self, agent_version,
+                              verbose,
+                              creatures.Creature.ACTION_SPACE,
+                              creatures.Creature.OBSERVATION_SPACE,
+                              epsilon=0.1,
+                              gradient_steps=-1)
+
+    def _get_is_done(self, new_obs):
+        return new_obs[4] < 1e-5  # creature is dead
+
+    def _compute_reward(self, old_obs, new_obs, action):
+        extra_penalty = 0
+        # extra_penalty = 0.01 * int(new_obs[4] == 1)  # small penalty for walking alone to avoid unnecessary splits
+        reward = new_obs[5] - extra_penalty  # species_cnt_change value
+        return reward

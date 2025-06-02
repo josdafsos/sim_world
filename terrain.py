@@ -87,7 +87,7 @@ class Terrain:
             tmp_creatures_list = self.creatures.copy()  # because some of the creatures may die during actions
             # and will be excluded from self.creatures list
             for creature in tmp_creatures_list:
-                creature.make_action()
+                creature.make_actions()
             # for creature in self.creatures:
             #     creature.make_action()
             self.current_time_hours += self.HOURS_PER_STEP
