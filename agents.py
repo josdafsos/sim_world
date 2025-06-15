@@ -31,7 +31,7 @@ class DQNCow(DQNBaseClass):
                          verbose,
                          creatures.Creature.ACTION_SPACE,
                          creatures.Creature.OBSERVATION_SPACE,
-                         epsilon=0.025,
+                         epsilon=0.20,
                          gradient_steps=-1)
 
     def _get_is_done(self, new_obs):
@@ -80,14 +80,14 @@ class DQNMemoryWolf(MemoryFrameStack, DQNBaseClass):
     AGENT_NAME = "dqn_memory_wolf"
 
     def __init__(self, agent_version: str = "new_agent", verbose: int = 0):
-
         MemoryFrameStack.__init__(self, memory_frame_stack_length=10)
         DQNBaseClass.__init__(self, agent_version,
                               verbose,
                               creatures.Creature.ACTION_SPACE,
                               creatures.Creature.OBSERVATION_SPACE,
-                              epsilon=0.1,
+                              epsilon=0.20,
                               gradient_steps=-1)
+
 
     def _get_is_done(self, new_obs):
         return new_obs[4] < 1e-5  # creature is dead

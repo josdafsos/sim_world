@@ -1,5 +1,6 @@
 import random
 import pygame
+import numpy as np
 
 class Vegetation:
 
@@ -24,9 +25,11 @@ class Vegetation:
         return Vegetation(tile)
 
     def plant(self, tile, growing_power=-1.0):
+
+        tile.world.update_vegetation_presence(tile.in_map_position, 1.0)  # Marking vegetation presence on the global map
+
         if self.TYPE not in tile.vegetation_dict:
             tile.vegetation_dict[self.TYPE] = self._create_entity(tile)  # TODO could a __class__ property be used here instead of this?
-
         if tile.vegetation_dict[self.TYPE].size < 0:
             tile.vegetation_dict[self.TYPE].size = self.MIN_NEW_PLANT_SIZE + random.random() * 0.5
         if growing_power < 0:  # growing randomly
@@ -53,13 +56,32 @@ class Vegetation:
             else:
                 del self.tile.vegetation_dict[self.TYPE]
 
-    def prepare_step(self):
+                # removing vegetation presence flag from global map
+                if not self.tile.vegetation_dict:
+                    self.tile.world.update_vegetation_presence(self.tile.in_map_position, 0.0)
+
+    def prepare_step_vegetation(self):
         total_moisture = 0
         surrounding_tiles = self.tile.surround_tiles_dict["012"]
-        for tile in surrounding_tiles:
-            total_moisture += tile.water.moisture_level
+        search_radius = 2  # radius of surrounding tiles search
+        tile_x, tile_y = self.tile.in_map_position
+        # for tile in surrounding_tiles:
+        #     total_moisture += tile.water.moisture_level
 
-        if self.tile.water.relative_height > 1e-4:
+        # TODO this part can be optimized if the required indexes are cached
+        # Get wrapped row and column indices for the moisture level
+        W, H = self.tile.world.map_size  # world height and width
+        if (tile_x - search_radius < 0 or tile_y - search_radius < 0
+                or tile_x + search_radius > W or tile_y + search_radius > H):
+
+            row_indices = (np.arange(tile_x - search_radius, tile_x + search_radius + 1) % W)
+            col_indices = (np.arange(tile_y - search_radius, tile_y + search_radius + 1) % H)
+            total_moisture = np.sum(self.tile.world.pad_moisture_level_mat[np.ix_(row_indices, col_indices)])
+        else:
+            total_moisture = np.sum(self.tile.world.pad_moisture_level_mat[tile_x - search_radius: tile_x + search_radius + 1,
+                                    tile_y - search_radius: tile_y + search_radius + 1])
+
+        if self.tile.world.water_relative_height[tile_x, tile_y] > 1e-4:
             self.size *= 1 - 0.05 - random.random() * 0.2
         elif total_moisture < self.MIN_MOISTURE_REQUIRED or random.random() < self.RANDOM_DECAY_PROBABILITY:
             self.size *= 1 - 0.01 - random.random() * 0.05 - 0.01 * (1 - self.tile.nutrition)
@@ -69,12 +91,13 @@ class Vegetation:
 
         self.clear_dead_plants()
 
-    def step(self, update_visuals):
+    def step_vegetation(self):
         growth_power = self.size * self.count
         surround_tiles = self.tile.surround_tiles_dict["012"]
         planting_probability = self.PLANTING_PROBABILITY_COEFF * growth_power / (self.MAX_CNT * len(surround_tiles))
         for tile in surround_tiles:
-            if planting_probability > random.random() and tile.water.relative_height < 1e-5:  # no planting in water
+            if (planting_probability > random.random() and
+                    tile.world.water_relative_height[tile.in_map_position] < 1e-5):  # no planting in water, old: tile.water.relative_height < 1e-5
                 self.plant(tile)
 
     def draw(self, screen, pos, width, height_scale, height_pos):

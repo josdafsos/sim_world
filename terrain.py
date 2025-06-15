@@ -4,11 +4,18 @@ import warnings
 
 import pygame
 import numpy as np
+from scipy.ndimage import generic_filter
+
 import world_properties
 from world_properties import WorldProperties
 import vegetation
 from creatures import Creature
 import agents
+
+# Define neighborhood shifts, used for computations of neighboring tiles effects
+shifts = ((-1, 1), (0, 1), (1, 1),
+          (-1, 0), (1, 0),
+          (-1, -1), (0, -1), (1, -1))
 
 
 class Terrain:
@@ -47,12 +54,22 @@ class Terrain:
         self.map_size = size
         self.terrain_map: list[list[Tile | ...]] = [[None for _ in range(self.map_size[1])] for _ in range(self.map_size[0])]
 
+        self.height_mat = np.zeros(self.map_size)
+        self.water_source_mat = np.zeros(self.map_size)
+        self.moisture_level_mat = np.zeros(self.map_size)
+        # wrapped padding on sides to reflect wrapped world
+        self.pad_moisture_level_mat = np.pad(self.moisture_level_mat, pad_width=1, mode='wrap')
+        self.water_relative_height = np.zeros(self.map_size)
+        self.absorbtion_coeff_mat = np.zeros(self.map_size)
+        self.vegetation_presence_map = np.zeros(self.map_size)  # 1 if any vegetation is presented, otherwise 0  # TODO initialize
+
         # --- other settings ---
         self.verbose = verbose
         self.total_steps = 0
         self.autoplay = False
         self.current_time_hours: int = 0  # current time of the day
         self.creatures = []  # list of all creatures currently living in the world
+        self.is_new_step_visual: bool = True  # Set to true every time when the world has just made a step. Used for visual updates
 
         for row in range(self.map_size[0]):
             for col in range(self.map_size[1]):
@@ -80,6 +97,74 @@ class Terrain:
         creature.set_tile(tile)
         self.creatures.append(creature)
 
+    def prepare_step_vegetation_mat(self):
+        vegetation_idx = np.argwhere(self.vegetation_presence_map > 0.5)  # indexes of all tiles with vegetation
+        for x, y in vegetation_idx:
+            tile = self.terrain_map[x][y]
+            for key in list(tile.vegetation_dict.keys()):
+                tile.vegetation_dict[key].prepare_step_vegetation()
+
+    def step_vegetation_mat(self):
+        vegetation_idx = np.argwhere(self.vegetation_presence_map > 0.5)  # indexes of all tiles with vegetation
+        for x, y in vegetation_idx:
+            tile = self.terrain_map[x][y]
+            for key in list(tile.vegetation_dict.keys()):
+                tile.vegetation_dict[key].step_vegetation()
+
+    def step_water_mat(self):
+        """ Computes water physics """
+
+        water_abs_height = self.height_mat + self.water_relative_height
+        pad_abs_water_level = np.pad(water_abs_height, pad_width=1, mode='wrap')  # wrapping for round world. TODO no wraping option for a boundary world
+
+        absorption = self.absorbtion_coeff_mat * (1 - 0.95 * self.height_mat)
+        absorption *= (1 - 0.5 * self.vegetation_presence_map)
+
+        flow_out_cnt_mat = np.ones_like(self.height_mat)
+        flow_out = np.zeros_like(self.height_mat)
+        flow_in = np.zeros_like(self.height_mat)
+
+        for dy, dx in shifts:
+            neighbor_abs_water_height = pad_abs_water_level[1 + dy: 1 + dy + self.map_size[0], 1 + dx: 1 + dx + self.map_size[1]]
+
+            water_diff = neighbor_abs_water_height - water_abs_height
+            # Where the neighbor is lower than current tile → water flows out
+            out_mask = water_diff < 0
+            flow_out += out_mask * self.moisture_level_mat * Water.FLOW_RATE_TIME_CONSTANT
+            flow_out_cnt_mat += out_mask
+
+        flow_out = flow_out / flow_out_cnt_mat
+        pad_flow_out_cnt = np.pad(flow_out_cnt_mat, pad_width=1, mode='wrap')
+
+        for dy, dx in shifts:
+            neighbor_abs_water_height = pad_abs_water_level[1 + dy: 1 + dy + self.map_size[0], 1 + dx: 1 + dx + self.map_size[1]]
+            neighbor_flow_out_cnt = pad_flow_out_cnt[1 + dy: 1 + dy + self.map_size[0], 1 + dx: 1 + dx + self.map_size[1]]
+            neighbor_moisture = self.pad_moisture_level_mat[1 + dy: 1 + dy + self.map_size[0], 1 + dx: 1 + dx + self.map_size[1]]
+
+            water_diff = neighbor_abs_water_height - water_abs_height
+            in_mask = water_diff > 0
+            flow_in += in_mask * neighbor_moisture * Water.FLOW_RATE_TIME_CONSTANT / neighbor_flow_out_cnt
+
+        self.moisture_level_mat += self.water_source_mat + flow_in - flow_out - absorption
+        self.moisture_level_mat[self.moisture_level_mat < 1e-4] = 0
+        self.pad_moisture_level_mat = np.pad(self.moisture_level_mat, pad_width=1, mode='wrap')
+
+        self.water_relative_height = np.maximum((self.moisture_level_mat - Water.MOISTURE_LEVEL_TO_RISE_HEIGHT) *
+                                                Water.MOISTURE_TO_WATER_LEVEL_COEFF, 0)
+
+        # Computing erosion due to flow
+        height_diff = np.tanh(flow_in - flow_out) * 3e-4  # limiting the maximum height difference per step
+        eroding_tiles = np.abs(height_diff) > 1e-7
+        intaking_water_tiles = flow_out < 1e-3  # tiles that intake water, but it does not flow further
+        flow_through_tiles = np.bitwise_not(intaking_water_tiles)  # tiles that have a through flow
+
+        intaking_water_tiles_idx = np.argwhere(np.bitwise_and(intaking_water_tiles, eroding_tiles))
+        flow_through_tiles_idx = np.argwhere(np.bitwise_and(flow_through_tiles, eroding_tiles))
+        for x, y in intaking_water_tiles_idx:
+            self.terrain_map[x][y].change_height_and_content(-abs(height_diff[x, y]) * 0.01, 'sand')
+        for x, y in flow_through_tiles_idx:
+            self.terrain_map[x][y].change_height_and_content(-abs(height_diff[x, y]), 'rock')
+
     def step(self) -> None:
         time_before_step = time.time()
 
@@ -88,30 +173,23 @@ class Terrain:
             # and will be excluded from self.creatures list
             for creature in tmp_creatures_list:
                 creature.make_actions()
-            # for creature in self.creatures:
-            #     creature.make_action()
             self.current_time_hours += self.HOURS_PER_STEP
         else:
             self.current_time_hours = 0
-            sum_height = 0  # for logging only
-            for row in range(self.map_size[0]):
-                for col in range(self.map_size[1]):
-                    self.terrain_map[row][col].prepare_step()
-            for row in range(self.map_size[0]):
-                for col in range(self.map_size[1]):
-                    self.terrain_map[row][col].step(self.enable_visualization)  #(surrounding_tiles, self.enable_visualization)
-                    sum_height += self.terrain_map[row][col].height_level
-            if self.verbose > 0:
-                print(f"Average land height: {sum_height / (self.map_size[0] * self.map_size[1])}")
+            self.is_new_step_visual = True  # set to False in draw call TODO set it false
 
-            # previously dead creature belong to the world, but now it belongs to the Tile
-            # i = 0
-            # while i < len(self.creatures):
-            #     is_rotten = self.creatures[i].new_day()
-            #     # if is_rotten:
-            #     #     self.creatures.pop(i)
-            #     # else:
-            #       i += 1
+            # for row in range(self.map_size[0]):
+            #     for col in range(self.map_size[1]):
+            #         self.terrain_map[row][col].prepare_step_tile()
+            self.prepare_step_vegetation_mat()
+
+            for row in range(self.map_size[0]):
+                for col in range(self.map_size[1]):
+                    self.terrain_map[row][col].step_tile(self.enable_visualization)  #(surrounding_tiles, self.enable_visualization)
+            self.step_vegetation_mat()
+            self.step_water_mat()  # new water physics computation
+
+
             for creature in self.creatures:
                 creature.new_day()
 
@@ -134,6 +212,23 @@ class Terrain:
             return self.terrain_map[row][col]
         else:
             raise "Bordered maps are not implemented yet"
+
+    def update_tile_height(self, tile_coords: tuple, new_height: float):
+        self.height_mat[tile_coords[0], tile_coords[1]] = new_height
+
+    def update_water_source(self, tile_coords: tuple, new_water_source: float):
+        self.water_source_mat[tile_coords[0], tile_coords[1]] = new_water_source
+
+    def update_absorbtion_coeff(self, tile_coords: tuple, new_absorbtion_coeff: float):
+        self.absorbtion_coeff_mat[tile_coords[0], tile_coords[1]] = new_absorbtion_coeff
+
+    def update_vegetation_presence(self, tile_coords: tuple, presented: float):
+        """
+        :param tile_coords:
+        :param presented: float, 1.0 if any vegetation is presented on the tile and 0.0 otherwise
+        :return:
+        """
+        self.vegetation_presence_map[tile_coords[0], tile_coords[1]] = presented
 
     def get_creature_on_tile(self, tile):
         """ Returns a creature on the tile. If tile is empty returns None"""
@@ -251,13 +346,14 @@ class Terrain:
             for row in range(self.camera_visible_x_range[0], self.camera_visible_x_range[1]):
                 for col in range(self.camera_visible_y_range[0], self.camera_visible_y_range[1]):
                     cur_pos = [self.camera_pos[0] + self.tile_width * row, self.camera_pos[1] + self.tile_width * col]
-                    self.terrain_map[row][col].draw(self.screen, cur_pos, self.tile_width)
+                    self.terrain_map[row][col].draw(self.screen, cur_pos, self.tile_width, self.is_new_step_visual)
                     tiles_drawn += 1
             for creature in self.creatures:
                 row, col = creature.tile.in_map_position
                 cur_pos = [self.camera_pos[0] + self.tile_width * row, self.camera_pos[1] + self.tile_width * col]
                 creature.draw(self.screen, cur_pos)
 
+            self.is_new_step_visual = False
         else:
             print("camera loop visualization is not yet implemented")  # TODO
 
@@ -279,11 +375,19 @@ class Water:
         self.flow_out = 0
         self.moisture_lines = []
         self.source_intensity = 0
+        self.absorption_coeff: float = 0.0
 
     def add_water_source(self, intensity: float):
         self.source_intensity = intensity
 
-    def prepare_step(self):
+    def update_absorbtion_coeff(self):
+        self.absorption_coeff = 0.0
+        for soil_type in self.tile.content_dict:  # taking absorption proportionally to the soil %
+            self.absorption_coeff += (world_properties.soil_types[soil_type]["water absorption"] *
+                                      self.tile.content_dict[soil_type])
+        self.tile.world.update_absorbtion_coeff(self.tile.in_map_position, self.absorption_coeff)
+
+    def prepare_step_water(self):
         flow_cnt_offset = 1
         flow_out_cnt = flow_cnt_offset
         surround_tiles = self.tile.surround_tiles_dict["1"]
@@ -300,14 +404,9 @@ class Water:
                 tile.water.flow_in += single_tile_flow_rate_out
                 self.flow_out += single_tile_flow_rate_out
 
-    def step(self, update_visuals):
+    def step_water(self, update_visuals):
 
-        # TODO compute absorbion level only on init and when the tile height changes
-        absorption_level = 0
-        for soil_type in self.tile.content_dict:  # taking absorption proportionally to the soil %
-            absorption_level += world_properties.soil_types[soil_type]["water absorption"] * self.tile.content_dict[soil_type]
-
-        absorption_level = absorption_level * (1 - 0.95 * self.tile.height_level)  # the higher tile, the smaller absorbtion
+        absorption_level = self.absorption_coeff * (1 - 0.95 * self.tile.height_level)  # the higher tile, the smaller absorbtion
 
         if self.tile.vegetation_dict:  # presence of vegetation_dict reduces water  absorption
             absorption_level *= 0.5
@@ -324,18 +423,6 @@ class Water:
         self.moisture_lines = []  # for visual effects of moisture
         if self.moisture_level < 0.0001:
             self.moisture_level = 0
-        elif self.relative_height < 0.000001:  # generating water lines
-            if update_visuals:
-                max_lines = 30
-                lines_cnt = int(self.moisture_level / Water.MOISTURE_LEVEL_TO_RISE_HEIGHT * max_lines) + 3
-                line_length = 0.2 + lines_cnt / max_lines * 0.4
-                line_width = 1 + int( lines_cnt / max_lines * 4)
-                for _ in range(lines_cnt):
-                    y = random.random()
-                    x_start = random.random()
-                    x_end = min(x_start + line_length, 1)
-                    self.moisture_lines.append([x_start, x_end, y, line_width])
-
 
         height_diff = np.tanh(self.flow_in - self.flow_out) * 3e-4  # limiting the maximum height difference per step
 
@@ -355,13 +442,25 @@ class Water:
         self.flow_in = 0.0
         self.flow_out = 0.0
 
-    def draw(self, screen, pos, width, height_scale, height_pos):
+    def draw(self, screen, pos, width, height_scale, height_pos, new_step: bool) -> None:
+        """
+        :param screen:
+        :param pos:
+        :param width:
+        :param height_scale:
+        :param height_pos:
+        :param new_step: bool, Must be True if a world has made a new step on the previous frame. Must be false otherwise
+        :return:
+        """
 
-        water_transparency = max(255 - self.moisture_level * 255, 20)
+        relative_height = self.tile.world.water_relative_height[self.tile.in_map_position]  #  self.relative_height
+        moisture_level = self.tile.world.moisture_level_mat[self.tile.in_map_position]  # self.moisture_level
+
+        water_transparency = max(255 - moisture_level * 255, 20)
 
         water_level_offset = [pos[0] + self.absolute_height * self.tile.world.height_direction[0] * height_scale,
                               pos[1] + self.absolute_height * self.tile.world.height_direction[1] * height_scale]
-        if self.relative_height > 0.0001:
+        if relative_height > 0.0001:
             pygame.draw.rect(screen, (40, 40, 255, water_transparency), (water_level_offset[0], water_level_offset[1], width, width))
         elif self.tile.world.camera_visible_tiles_cnt < 3000:
             if self.source_intensity > 1e-4:
@@ -370,7 +469,19 @@ class Water:
                                    (height_pos[0] + width/2, height_pos[1] + width/2),
                                    radius)
 
-            if self.moisture_level > 0.0001: #width > 8:  # second condition is for drawing optimization
+            if moisture_level > 0.0001: #width > 8:  # second condition is for drawing optimization
+                if new_step:  # updating water lines on a new step (for motion animation)
+                    max_lines = 20
+                    lines_cnt = int(moisture_level / Water.MOISTURE_LEVEL_TO_RISE_HEIGHT * max_lines) + 3
+                    line_length = 0.2 + lines_cnt / max_lines * 0.4
+                    line_width = 1 + int(lines_cnt / max_lines * 4)
+                    self.moisture_lines = []
+                    for _ in range(lines_cnt):
+                        y = random.random()
+                        x_start = random.random()
+                        x_end = min(x_start + line_length, 1)
+                        self.moisture_lines.append([x_start, x_end, y, line_width])
+
                 x_min = height_pos[0]
                 y_min = height_pos[1]
                 for line in self.moisture_lines:
@@ -379,7 +490,6 @@ class Water:
                                      (x_min + line[0] * width, y_min + line[2] * width),
                                      (x_min + line[1] * width, y_min + line[2] * width),
                                      line[3])
-
 
 
 class Tile:
@@ -436,12 +546,17 @@ class Tile:
                     self.water.add_water_source(water_source_intensity)
                     self.modifiers.append([generation_property[0], water_source_intensity])   # second element is generating speed
                 elif generation_property[0] == "grass":
-                    if not "grass" in self.vegetation_dict:
+                    if "grass" not in self.vegetation_dict:
                         self.vegetation_dict["grass"] = vegetation.Grass(self)
 
                     self.vegetation_dict["grass"].plant(self)
 
                 print("added ", generation_property[0])
+
+        self.water.update_absorbtion_coeff()
+
+        self.world.update_tile_height(self.in_map_position, self.height_level)
+        self.world.update_water_source(self.in_map_position, self.water.source_intensity)
 
     def _set_tile_texture_by_soil(self):
         """
@@ -561,6 +676,9 @@ class Tile:
         self._update_nutrition()
         self._set_tile_texture_by_soil()
 
+        self.water.update_absorbtion_coeff()
+        self.world.update_tile_height(self.in_map_position, self.height_level)
+
     def _set_surrounding_tiles(self, surrounding_tiles):
         self.surround_tiles_dict["1"] = tuple(surrounding_tiles[1])
         self.surround_tiles_dict["2"] = tuple(surrounding_tiles[2])
@@ -575,27 +693,32 @@ class Tile:
             return self.surround_tiles_dict[radius_tuple[tile_range-1]]
         return self.surround_tiles_dict[tile_range]
 
-    def prepare_step(self):
-        self.water.prepare_step()
-        for key in list(self.vegetation_dict.keys()):
-            self.vegetation_dict[key].prepare_step()
+    def prepare_step_tile(self):
+        # --- NOTE ---
+        # water and vegetation prepare operations were replace by matrix form called from terrain class
 
-    def step(self, update_visuals=False):
+        #self.water.prepare_step_water()
+        # for key in list(self.vegetation_dict.keys()):
+        #     self.vegetation_dict[key].prepare_step_vegetation()
+        pass
+
+    def step_tile(self, update_visuals=False):
         if self.dead_cnt > 0:
             if random.random() < WorldProperties.body_disappear_chance:
                 self.erase_dead_creature(1)  # one body is erased at a time
 
-        for modifier in self.modifiers:
-            pass
-            # water is processed automatically inside of Water class
-            # if modifier[0] == "water source":
-            #     self.moisture_level += modifier[1]
-        self.water.step(update_visuals)
+        # for modifier in self.modifiers:
+        #     pass
+        #     # water is processed automatically inside of Water class
+        #     # if modifier[0] == "water source":
+        #     #     self.moisture_level += modifier[1]
 
-        for key in list(self.vegetation_dict.keys()):  # call via listed keys is due to potential deletion of a key
-            self.vegetation_dict[key].step(update_visuals)
+        #self.water.step_water(update_visuals)
 
-    def draw(self, screen, pos, width):
+        # for key in list(self.vegetation_dict.keys()):  # call via listed keys is due to potential deletion of a key
+        #     self.vegetation_dict[key].step_vegetation(update_visuals)
+
+    def draw(self, screen, pos, width, is_new_step):
         height_scale = width * 0.5  # TODO remove this value from the draw function since it is accessasble via self.world.height_scale
         #  texture_color = world_properties.soil_types[self.content_list[0][0]]["color"]   # OBSOLETE, NOW THERE IS self.texture
         height_pos = [pos[0] + self.height_level * self.world.height_direction[0] * self.world.height_scale,
@@ -603,17 +726,17 @@ class Tile:
         # for now drawing the highest content only
         pygame.draw.rect(screen, self.texture, (height_pos[0], height_pos[1], width, width))
 
-        # drawing land modifiers
-        for modifier in self.modifiers:
-            pass
-            # if modifier[0] == "water source":  # water source is drawn in Water class
-            #     radius = width/2 * modifier[1] / Water.MAX_SOURCE_OUTPUT
-            #     pygame.draw.circle(screen, (0, 0, 200, 200),
-            #                        (height_pos[0] + width/2, height_pos[1] + width/2),
-            #                        radius)
+        # # drawing land modifiers
+        # for modifier in self.modifiers:
+        #     pass
+        #     # if modifier[0] == "water source":  # water source is drawn in Water class
+        #     #     radius = width/2 * modifier[1] / Water.MAX_SOURCE_OUTPUT
+        #     #     pygame.draw.circle(screen, (0, 0, 200, 200),
+        #     #                        (height_pos[0] + width/2, height_pos[1] + width/2),
+        #     #                        radius)
 
 
-        self.water.draw(screen, pos, width, height_scale, height_pos)
+        self.water.draw(screen, pos, width, height_scale, height_pos, is_new_step)
         if self.dead_creature is not None:
             self.dead_creature.draw(screen, pos)
         for plant in self.vegetation_dict.values():  # iteration is due to multiple kinds of plants

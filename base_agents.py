@@ -61,23 +61,19 @@ class MemoryFrameStack:
 
     def __init__(self, memory_frame_stack_length: int, *args, **kwargs):
         """
-
         :param memory_frame_stack_length: {positive integer}, if more than 1, requires several observation frames
         to stack together
         :param args:
         :param kwargs:
         """
 
-        # TODO fix assertion to check if Frame stack initialized first. Right now it unexptedly asserts a wrong statement
-        # assert hasattr(self, 'observation_space'), "MemoryFrameStack class must be initializaed before observation space attribute"
-        # if not hasattr(self, 'observation_space'):
-        #     raise AttributeError('The child class does not have observation_space attribute')
+        # super().__init__(*args, **kwargs)
+        assert not hasattr(self, 'observation_space'), "MemoryFrameStack class must be initializaed before observation space attribute"
 
         if memory_frame_stack_length < 1:
             raise ValueError("memory_frame_stack_length must be positive")
         else:
             self._memory_frame_stack_length = memory_frame_stack_length
-        # self.observation_space = self._memory_frame_stack_length * np.array(self.observation_space)
 
     def get_memory_frame_stack_length(self):
         return self._memory_frame_stack_length
@@ -96,7 +92,6 @@ class Observable:
         if isinstance(self, MemoryFrameStack):
             assert hasattr(self, '_memory_frame_stack_length'), "MemoryFrameStack must be inherited before any class containing Observable"
             self.observation_space = self.observation_space * self._memory_frame_stack_length
-
 
 
 class DQNBaseClass(Agent, Observable):
@@ -140,7 +135,6 @@ class DQNBaseClass(Agent, Observable):
         self.verbose: int = verbose  # if > 0 then outputs _agent states and related info
         self.actions: list = []
         self.action_space = action_space
-        #self.observation_space = observation_space
         Observable.__init__(self, observation_space)
 
         self.sum_reward: float = 0  # total reward before model is saved
@@ -169,7 +163,6 @@ class DQNBaseClass(Agent, Observable):
             self._get_new_model()
 
         self.model._logger = logger.configure(None)  # we don't need any logger, but without the configuration model crashes
-
 
     def _load_model(self):
         if self.verbose > 0:
