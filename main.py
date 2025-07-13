@@ -16,6 +16,9 @@ if __name__ == '__main__':
     # --- Debug flags ----
     count_execution_time = False  # if True when program is finished, highlights of longest functions sent to console
 
+    if count_execution_time:
+        print("Debug option enabled: count_execution_time")
+
 
     # Initialize pygame
     pygame.init()

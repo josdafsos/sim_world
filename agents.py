@@ -31,7 +31,7 @@ class DQNCow(DQNBaseClass):
                          verbose,
                          creatures.Creature.ACTION_SPACE,
                          creatures.Creature.OBSERVATION_SPACE,
-                         epsilon=0.20,
+                         epsilon=0.30,
                          gradient_steps=-1)
 
     def _get_is_done(self, new_obs):
