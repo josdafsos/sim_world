@@ -48,6 +48,7 @@ class Creature:
     DAYS_TO_BODY_BE_ROTTEN: int = 15  # body disappears after this number of days
     CHANCE_OF_BIRTH: float = 0.01  # 0.005  # on new day if the creature is in good condition there is chance to increase
     # population per each existing creature in stack
+    MASS: float = 1.0  # mass of a single creature (kinda in kg), used for interactions
     IS_AFFECTING_ROADS: bool = True  # defines if the creature can make a road by frequent walking on a tile
     SINGLE_CREATURE_STRENGTH: float = 1.0  # defines how much damage a creature per unit does during attack
 

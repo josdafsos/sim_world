@@ -27,7 +27,11 @@ if __name__ == '__main__':
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Sim world")
 
-    world = terrain.Terrain(screen, (50, 50), verbose=0)  # background
+    world = terrain.Terrain(screen,
+                            (40, 40),
+                            verbose=0,
+                            generation_method='consistent_random',  # see other options in the description, 'consistent_random'
+                            )
     world.camera_fit_view()
     # world.multiple_steps(100)
 

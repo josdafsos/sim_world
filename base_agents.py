@@ -98,7 +98,7 @@ class DQNBaseClass(Agent, Observable):
     """ Base class for all DQN agents """
 
     AGENT_NAME = "DQNBaseClass"
-    AGENT_SAVING_FREQUENCY = 20_000
+    AGENT_SAVING_FREQUENCY = 1_000_000
 
     def __init__(self, agent_version,
                  verbose: int,

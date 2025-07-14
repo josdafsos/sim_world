@@ -2,21 +2,32 @@ import random
 import pygame
 import numpy as np
 
-class Vegetation:
+# IDEA evolution of vegetation if a plant is put into certain conditions
+# i.e. grass can evolve into lili plant if submerged into water
 
-    MAX_CNT = 1  # maximum number of certain vegetation_dict type per tile
-    MAX_LENGTH = 1.0  # visual length of vegetation_dict as ration of tile width
-    MIN_NEW_PLANT_SIZE = 0.05  # plant dies if its size below this value
+
+class Vegetation:
+    """
+    Base vegetation class, any vegetation class must inherit it.
+    """
+    MAX_CNT: int = 1  # maximum number of certain vegetation_dict type per tile
+    MAX_LENGTH: float = 1.0  # visual length of vegetation_dict as ration of tile width
+    MIN_NEW_PLANT_SIZE: float = 0.05  # plant dies if its size below this value
     MIN_PLANT_SIZE = 0.1  # minimum size of a newly created plant
-    MIN_MOISTURE_REQUIRED = 0.05  # if surrounding tile don't provide enough moisture, plants will fade
-    MOISTURE_SEARCH_RADIUS = 2  # defines the radius of the surrounding tile to compute moisture for the plant
-    RANDOM_DECAY_PROBABILITY = 0.005  # probability that a plant will fade a bit
-    PLANTING_PROBABILITY_COEFF = 0.2  # Affects how frequently the plant will spread its seeds.
+    MIN_MOISTURE_REQUIRED: float = 0.05  # if surrounding tile don't provide enough moisture, plants will fade
+    MOISTURE_SEARCH_RADIUS: int = 2  # defines the radius of the surrounding tile to compute moisture for the plant
+    RANDOM_DECAY_PROBABILITY: float = 0.005  # probability that a plant will fade a bit
+    PLANTING_PROBABILITY_COEFF: float = 0.2  # Affects how frequently the plant will spread its seeds.
     # Original 0.2, but lower might be more realistic at a big matp
+    MASS: float = 1.0  # mass of a single plant (assumed in kg, kinda). Used in interactions with vegetation. # TODO implement
 
     TYPE = "base class"
 
-    def __init__(self, self_tile):
+    def __init__(self, self_tile, texture: str = None):
+        """
+        :param self_tile: Tile on which vegetation instance is swapned
+        :param texture: string, name of a texture file. Default None - rendered with primitives if implemented.
+        """
         self.tile = self_tile
         # tuple of vegetation_dict visual properties, each entity [size, x_pos, y_pos], size in (0, 1) range
         self.visual_vegetation_list: tuple[tuple[...]] = []
@@ -33,6 +44,12 @@ class Vegetation:
         col_indices = (np.arange(tile_y - self.MOISTURE_SEARCH_RADIUS, tile_y + self.MOISTURE_SEARCH_RADIUS + 1) % H)
         # mat of tile indexes to compute surrounding moisture level
         self.moisutre_tile_idx = np.ix_(row_indices, col_indices)
+
+        if isinstance(texture, str):  # TODO implement textures for vegetation
+            self.texture = pygame.image.load("textures//" + texture).convert_alpha()
+        else:
+            self.texture = None  # a default drawing method will be used if exist
+        self.scaled_texture = None
 
     def _init_visual_vegetation(self):
         self.visual_vegetation_list = tuple((random.random() * 0.7 + 0.3,  # plant size, max 1
@@ -110,6 +127,7 @@ class Vegetation:
 class Grass(Vegetation):
     MAX_LENGTH = 0.3
     MAX_CNT = 10
+    MASS = 10
     TYPE = "grass"
 
     def __init__(self, self_tile):

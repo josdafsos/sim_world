@@ -14,7 +14,7 @@ class WorldProperties:
 soil_types = {
     "dirt": {
         "color": (148, 85, 49, 255),
-        "water absorption": 0.0004,
+        "water absorption": 0.00015,
         "nutritional value": 1,
     },
     "rock": {
@@ -24,7 +24,7 @@ soil_types = {
     },
     "sand": {
         "color": (200, 170, 80, 255),
-        "water absorption": 0.002,
+        "water absorption": 0.00075,
         "nutritional value": 0.1,
     }
 }

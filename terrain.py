@@ -13,9 +13,12 @@ from creatures import Creature
 import agents
 
 # Define neighborhood shifts, used for computations of neighboring tiles effects
-shifts = ((-1, 1), (0, 1), (1, 1),
-          (-1, 0), (1, 0),
-          (-1, -1), (0, -1), (1, -1))
+# shifts = ((-1, 1), (0, 1), (1, 1),
+#           (-1, 0), (1, 0),
+#           (-1, -1), (0, -1), (1, -1))
+# simplified shifts for only horizontal and vertical interactions
+shifts = ((0, -1), (0, 1),
+          (-1, 0), (1, 0),)
 
 
 class Terrain:
@@ -24,17 +27,23 @@ class Terrain:
     HEIGHT_SCALE_COEFF = 0.75  # defines offset of tall object from the small ones
     HOURS_PER_STEP = 6  # how many hours are passed after each mini-step is made
 
-
-    def __init__(self, screen, size: tuple[int, int], enable_visualization=True,
-                 enable_map_loop_visualization=False,
+    def __init__(self,
+                 screen,
+                 size: tuple[int, int],
+                 enable_visualization: bool = True,
+                 enable_map_loop_visualization: bool = False,
                  verbose: int = 0,
-                 is_round_map=True):
+                 is_round_map: bool = True,
+                 generation_method: str = 'random'):
         """
         :param screen - pygame screen on which the world will be drawn
         :param size - (width, heigh) size of the generated map
         :param verbose - {0, 1, 2} sets the amount of information printed in the console
         :param is_round_map If true the map connects opposite ends of the map
-
+        :param generation_method: a method to create a new world.
+        String, following options are available:
+        random - (default) fully random world,
+        consistent_random - random world with gradual changes in height and tile content
         """
 
         # --- visual settings ---
@@ -73,7 +82,8 @@ class Terrain:
 
         for row in range(self.map_size[0]):
             for col in range(self.map_size[1]):
-                self.terrain_map[row][col] = Tile(self, [], (row, col))
+                surrounding_tiles, _ = self._get_surrounding_tiles(row, col, self.terrain_map, search_diameter=3)
+                self.terrain_map[row][col] = Tile(self, surrounding_tiles, (row, col), generation_method)
         for row in range(self.map_size[0]):
             for col in range(self.map_size[1]):
                 _, distance_sorted_tiles = self._get_surrounding_tiles(row, col, self.terrain_map, search_diameter=5)
@@ -126,26 +136,27 @@ class Terrain:
 
         for dy, dx in shifts:
             neighbor_abs_water_height = pad_abs_water_level[1 + dy: 1 + dy + self.map_size[0], 1 + dx: 1 + dx + self.map_size[1]]
-
             water_diff = neighbor_abs_water_height - water_abs_height
             # Where the neighbor is lower than current tile → water flows out
             out_mask = water_diff < 0
             flow_out += out_mask * self.moisture_level_mat * Water.FLOW_RATE_TIME_CONSTANT
-            flow_out_cnt_mat += out_mask
+            flow_out_cnt_mat += out_mask  # counting to how many neighbouring tiles the water is floating
 
         flow_out = flow_out / flow_out_cnt_mat
-        pad_flow_out_cnt = np.pad(flow_out_cnt_mat, pad_width=1, mode='wrap')
+
+        # making pre-computations for the next for_loop
+        flow_out_rate = self.moisture_level_mat * Water.FLOW_RATE_TIME_CONSTANT / flow_out_cnt_mat
+        pad_flow_out_rate = np.pad(flow_out_rate, pad_width=1, mode='wrap')
 
         for dy, dx in shifts:
             neighbor_abs_water_height = pad_abs_water_level[1 + dy: 1 + dy + self.map_size[0], 1 + dx: 1 + dx + self.map_size[1]]
-            neighbor_flow_out_cnt = pad_flow_out_cnt[1 + dy: 1 + dy + self.map_size[0], 1 + dx: 1 + dx + self.map_size[1]]
-            neighbor_moisture = self.pad_moisture_level_mat[1 + dy: 1 + dy + self.map_size[0], 1 + dx: 1 + dx + self.map_size[1]]
-
+            neighbor_flow_out_rate = pad_flow_out_rate[1 + dy: 1 + dy + self.map_size[0], 1 + dx: 1 + dx + self.map_size[1]]
             water_diff = neighbor_abs_water_height - water_abs_height
             in_mask = water_diff > 0
-            flow_in += in_mask * neighbor_moisture * Water.FLOW_RATE_TIME_CONSTANT / neighbor_flow_out_cnt
+            flow_in += in_mask * neighbor_flow_out_rate
 
-        self.moisture_level_mat += self.water_source_mat + flow_in - flow_out - absorption
+        flow_difference = flow_in - flow_out
+        self.moisture_level_mat += self.water_source_mat + flow_difference - absorption
         self.moisture_level_mat[self.moisture_level_mat < 1e-4] = 0
         self.pad_moisture_level_mat = np.pad(self.moisture_level_mat, pad_width=1, mode='wrap')
 
@@ -153,17 +164,17 @@ class Terrain:
                                                 Water.MOISTURE_TO_WATER_LEVEL_COEFF, 0)
 
         # Computing erosion due to flow
-        height_diff = np.tanh(flow_in - flow_out) * 3e-4  # limiting the maximum height difference per step
+        height_diff = np.tanh(flow_difference) * 3e-4  # limiting the maximum height difference per step
         eroding_tiles = np.abs(height_diff) > 1e-7
-        intaking_water_tiles = flow_out < 1e-3  # tiles that intake water, but it does not flow further
+        intaking_water_tiles = flow_out < 1e-8  # tiles that intake water, but it does not flow further
         flow_through_tiles = np.bitwise_not(intaking_water_tiles)  # tiles that have a through flow
 
         intaking_water_tiles_idx = np.argwhere(np.bitwise_and(intaking_water_tiles, eroding_tiles))
         flow_through_tiles_idx = np.argwhere(np.bitwise_and(flow_through_tiles, eroding_tiles))
         for x, y in intaking_water_tiles_idx:
-            self.terrain_map[x][y].change_height_and_content(-abs(height_diff[x, y]) * 0.01, 'sand')
+            self.terrain_map[x][y].change_height_and_content(-height_diff[x, y] * 0.01, 'sand')
         for x, y in flow_through_tiles_idx:
-            self.terrain_map[x][y].change_height_and_content(-abs(height_diff[x, y]), 'rock')
+            self.terrain_map[x][y].change_height_and_content(-np.abs(height_diff[x, y]), 'rock')
 
     def step(self) -> None:
         time_before_step = time.time()
@@ -385,6 +396,8 @@ class Water:
         for soil_type in self.tile.content_dict:  # taking absorption proportionally to the soil %
             self.absorption_coeff += (world_properties.soil_types[soil_type]["water absorption"] *
                                       self.tile.content_dict[soil_type])
+        # if self.absorption_coeff < 0:  # this check was used to find a bug, no it is fixed
+        #     warnings.warn("Negative absorption coefficient detected")
         self.tile.world.update_absorbtion_coeff(self.tile.in_map_position, self.absorption_coeff)
 
     def prepare_step_water(self):
@@ -496,36 +509,40 @@ class Tile:
 
     # TODO cache tile states to faster obtained by the creatures
 
-    def __init__(self, world, surrounding_tiles: list[list[...]], in_map_position):
+    def __init__(self,
+                 world: Terrain,
+                 surrounding_tiles: list[list[...]],
+                 in_map_position: tuple[int, int],
+                 generation_method: str):
         """
         Generates random tile
+        :param world: instance of Terrain class on which the tile is spawned
+        :param surrounding_tiles: list of list of all initialized tiles in the closest neighbourhood
+        :param in_map_position: tuple of (row, column) indexes in the world
+        :param generation_method: a method to create a new world.
+        String, following options are available:
+        random - (default) fully random world,
+        consistent_random - random world with gradual changes in height and tile content
         """
-        self.height_level: float = random.random()  # height of the tile, can lay in range [0, 1]
+
         self.world = world
-        self.water: Water = Water(self)  # wouldn't it be better to inherit water instead of making an instance?!
         self.content_dict: dict = {}
         self.modifiers: list = []
         self.surround_tiles_dict: dict = {}
         self.in_map_position: tuple[int, int] = in_map_position  # (row, col) indexes of the tile in the world
-
         self.vegetation_dict: dict = {}
-        self.nutrition = 0
-
         self.dead_cnt: int = 0  # number of dead bodies on the tile
         self.dead_creature: Creature | None = None  # temporary variable, will be used for drawing mostly
+        self.nutrition = 0
 
-        self.texture: tuple[float, float, float] | str | None = None  # if None, auto texture will be assigned
-
-        flattened_tiles = [item for sublist in surrounding_tiles if sublist is not None for item in sublist if item is not None]
+        flattened_tiles = [item for sublist in surrounding_tiles if sublist is not None for item in sublist if
+                           item is not None]
 
         # purely random tile
+        self.height_level: float = random.random()  # height of the tile, can lay in range [0, 1]
         tile_content = {}
         for key in world_properties.soil_types:
-            if key not in tile_content.keys():
-                tile_content[key] = random.random()
-            else:
-                tile_content[key] += random.random()
-
+            tile_content[key] = random.random()
         highest_content_types = sorted(tile_content, key=tile_content.get, reverse=True)[:2]  # picking two biggest values
         sum_content = 0
         for key in highest_content_types:
@@ -533,10 +550,30 @@ class Tile:
             self.content_dict[key] = tile_content[key]
         for key in self.content_dict:
             self.content_dict[key] /= sum_content  # normalizing total content to [0, 1]
-            #self.nutrition += self.content_dict[key] * world_properties.soil_types[key]["nutritional value"]
+
+        if generation_method == 'consistent_random':
+            if flattened_tiles:  # checking that currently initialized tile is not the very first
+                sum_height = 0
+                sum_content = 1.0  # we normalized the tile's content before, that's why it is started with 1.0
+                total_content_dict = self.content_dict
+                for tile in flattened_tiles:
+                    sum_height += tile.height_level
+                    for key, value in tile.content_dict.items():
+                        total_content_dict[key] = total_content_dict.get(key, 0) + value
+                        sum_content += value
+
+                for key in total_content_dict:
+                    total_content_dict[key] /= sum_content  # normalizing total content to [0, 1]
+                self.content_dict = total_content_dict
+
+                mean_height = sum_height / len(flattened_tiles)
+                self.height_level = np.random.normal(mean_height, 0.25)
+
+        self.height_level = max(0.0, self.height_level)  # clipping height level between [0, 1]
+        self.height_level = min(1.0, self.height_level)
 
         self._update_nutrition()  # computing nutrition of the soil based on soils in the tile
-        self._set_tile_texture_by_soil()
+        self.water: Water = Water(self)  # wouldn't it be better to inherit water instead of making an instance?!
 
         for generation_property in world_properties.world_generation_properties["generation probabilities"]:
             if random.random() < generation_property[1]:
@@ -554,9 +591,12 @@ class Tile:
                 print("added ", generation_property[0])
 
         self.water.update_absorbtion_coeff()
-
         self.world.update_tile_height(self.in_map_position, self.height_level)
         self.world.update_water_source(self.in_map_position, self.water.source_intensity)
+
+        # visual properties
+        self.texture: tuple[float, float, float] | str | None = None  # if None, auto texture will be assigned
+        self._set_tile_texture_by_soil()
 
     def _set_tile_texture_by_soil(self):
         """
@@ -679,7 +719,13 @@ class Tile:
         self.water.update_absorbtion_coeff()
         self.world.update_tile_height(self.in_map_position, self.height_level)
 
-    def _set_surrounding_tiles(self, surrounding_tiles):
+    def _set_surrounding_tiles(self, surrounding_tiles) -> None:
+        """
+        Caching tiles in a set of radiuses, where radius of 0 means self tile, 1 is closes neighbourhood and so on.
+        combination of radiuses such as 012 means self tile, and both first and second order of the neighborhood.
+        :param surrounding_tiles:
+        :return:
+        """
         self.surround_tiles_dict["1"] = tuple(surrounding_tiles[1])
         self.surround_tiles_dict["2"] = tuple(surrounding_tiles[2])
         self.surround_tiles_dict["01"] = tuple([self] + surrounding_tiles[1])

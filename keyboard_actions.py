@@ -41,6 +41,10 @@ def switch_drawing_enabled(world, action, pressed_key_idx_list):
         world.enable_visualization = not world.enable_visualization
         action["last call time"] = time.time()
         action["steps in row"] = min(action["steps in row"] + 1, 2)
+        if world.enable_visualization:
+            print("Visualization enabled")
+        else:
+            print("Visualization disabled")
 
 keys_list = [
     {
