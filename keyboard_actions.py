@@ -23,6 +23,14 @@ def world_autoplay(world, action, pressed_key_idx_list):
         print("world autoplay enabled")
     action["steps in row"] = min(action["steps in row"] + 1, 30)
 
+def world_autoplay_single_key_press(world, action, pressed_key_idx_list):
+    if time.time() - action["last call time"] > 0.500 and not world.autoplay:
+        world.autoplay = True
+        print("world autoplay enabled")
+        action["steps in row"] = min(action["steps in row"] + 1, 2)
+        action["last call time"] = time.time()
+
+
 def camera_move(world, action, pressed_key_idx_list):
     if time.time() - action["last call time"] > 0.150 / (action["steps in row"] + 1):
         for action_idx in pressed_key_idx_list:
@@ -57,6 +65,13 @@ keys_list = [
     {
         "keys": [pygame.K_SPACE],
         "action": world_autoplay,
+        "last call time": time.time(),
+        "last release time": time.time() - 5,
+        "steps in row": 0,
+    },
+    {
+        "keys": [pygame.K_p],
+        "action": world_autoplay_single_key_press,
         "last call time": time.time(),
         "last release time": time.time() - 5,
         "steps in row": 0,
