@@ -25,13 +25,16 @@ class DQNCow(DQNBaseClass):
 
     AGENT_NAME = "dqn_cow"
 
-    def __init__(self, agent_version: str = "new_agent", verbose: int = 0):
+    def __init__(self,
+                 agent_version: str = "new_agent",
+                 verbose: int = 0,
+                 epsilon: float | tuple[float, float, int] = 0.3):
 
         super().__init__(agent_version,
                          verbose,
                          creatures.Creature.ACTION_SPACE,
                          creatures.Creature.OBSERVATION_SPACE,
-                         epsilon=0.30,
+                         epsilon=epsilon,
                          gradient_steps=-1)
 
     def _get_is_done(self, new_obs):

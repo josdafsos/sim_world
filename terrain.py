@@ -62,6 +62,7 @@ class Terrain:
         self.enable_map_loop_visualization = enable_map_loop_visualization and is_round_map
         self.map_size = size
         self.terrain_map: list[list[Tile | ...]] = [[None for _ in range(self.map_size[1])] for _ in range(self.map_size[0])]
+        # TODO convert terrain map to tuple when initialization has finished
 
         self.height_mat = np.zeros(self.map_size)
         self.water_source_mat = np.zeros(self.map_size)

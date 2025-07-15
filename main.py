@@ -1,4 +1,5 @@
 import time
+import threading
 
 import pygame
 
@@ -11,6 +12,16 @@ import world_properties
 import cProfile
 import pstats
 
+
+def parse_inputs(world, shared):
+    while True:
+        keyboard_actions.parse_actions(world)
+        time.sleep(0.15)
+        if not shared["running"]:
+            break
+    print("keyboard parsing thread finished")
+
+
 if __name__ == '__main__':
 
     # --- Debug flags ----
@@ -18,7 +29,6 @@ if __name__ == '__main__':
 
     if count_execution_time:
         print("Debug option enabled: count_execution_time")
-
 
     # Initialize pygame
     pygame.init()
@@ -28,7 +38,7 @@ if __name__ == '__main__':
     pygame.display.set_caption("Sim world")
 
     world = terrain.Terrain(screen,
-                            (25, 25),
+                            (40, 40),
                             verbose=0,
                             generation_method='consistent_random',  # see other options in the description, 'consistent_random'
                             )
@@ -36,7 +46,9 @@ if __name__ == '__main__':
     # world.multiple_steps(100)
 
     random_cow_agent = agents.RandomCow()
-    dqn_cow_agent = agents.DQNCow(verbose=1, agent_version="new_agent")
+    dqn_cow_agent = agents.DQNCow(verbose=1,
+                                  epsilon=(1.0, 0.05, int(1e7)),
+                                  agent_version="new_agent")
     memory_wolf_agent = agents.DQNMemoryWolf(verbose=1)
     # random_cow = creatures.Creature(random_cow_agent, texture="cow.png")
     cow_agent = dqn_cow_agent
@@ -49,6 +61,10 @@ if __name__ == '__main__':
 
     # Main loop
     running = True
+    shared = {"running": True}  # to pass variable for multithreading
+    keyboard_thread = threading.Thread(target=parse_inputs, args=(world, shared,))
+    keyboard_thread.start()
+
     steps_made_in_a_row = 0
     time_step_made = time.time()
     last_render_time = time.time()
@@ -75,8 +91,8 @@ if __name__ == '__main__':
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+                shared["running"] = False
 
-        keyboard_actions.parse_actions(world)
         if world.autoplay:
             world.step()
 
@@ -103,4 +119,5 @@ if __name__ == '__main__':
 
     # Quit pygame
     pygame.quit()
+    keyboard_thread.join()
 

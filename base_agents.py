@@ -106,7 +106,7 @@ class DQNBaseClass(Agent, Observable):
                  observation_space,
                  learning_rate: float = 1e-5,
                  batch_size: int = 32,
-                 epsilon: float = 0.1,
+                 epsilon: float | tuple[float, float, int] = 0.1,
                  gradient_steps: int = 1,
                  policy_kwargs: dict = None,
                  *args,
@@ -121,7 +121,9 @@ class DQNBaseClass(Agent, Observable):
         :param observation_space: observation space in a single observation frame (without memory stack);
         :param learning_rate:
         :param batch_size:
-        :param epsilon: [0, 1] probability of taking a random action instead of using agent's predict function
+        :param epsilon: float [0, 1] probability of taking a random action instead of using agent's predict function
+        tuple(initial epsilon value, final epsilon value, step to reach final value),
+        epsilon will be linearly reduced until it reaches the final value at which it will be kept.
         :param gradient_steps: {-1, positive integer} number of gradient steps for training the agent, -1 for max steps
         :param policy_kwargs: dictionary to define neural network topology. If None, default topology is used
         :param memory_frame_stack_length: {positive integer} number of observation frames stacked together
@@ -139,10 +141,18 @@ class DQNBaseClass(Agent, Observable):
 
         self.sum_reward: float = 0  # total reward before model is saved
         self.sum_steps: int = 0  # total steps before model is saved
+        self._steps_done: int = 0  # counter on how many predictions has been made since agent's initialization
 
-        self.epsilon: float = epsilon  # defines the probability of taking a non-greedy action
+        if isinstance(epsilon, float):
+            self.epsilon: float = epsilon  # defines the current probability of taking a non-greedy action
+            self.initial_epsilon, self.final_epsilon, self.max_epsilon_steps = None, None, None
+        else:
+            self.initial_epsilon = epsilon[0]
+            self.epsilon = self.initial_epsilon
+            self.final_epsilon = epsilon[1]
+            self.max_epsilon_steps = epsilon[2]
+
         self.gradient_steps: int = gradient_steps  # for NN training, can be re-defined in child class
-
         self._saving_counter: int = 0  # counter to save model after a certain number of learning steps
 
         self.model_path = os.path.join(utils.agents_folder, self.AGENT_NAME, agent_version)  # path to the model
@@ -225,6 +235,16 @@ class DQNBaseClass(Agent, Observable):
             action_idx = random.randint(0, self.action_space-1)
         else:
             action_idx, _ = self.model.predict(obs, deterministic=True)
+
+        if self.max_epsilon_steps is not None:  # linearly decreasing epsilon if required
+            self.epsilon = (self.final_epsilon +
+                            (self.initial_epsilon - self.final_epsilon) *
+                            (1 - self._steps_done / self.max_epsilon_steps))
+
+            if self._steps_done >= self.max_epsilon_steps:
+                self.max_epsilon_steps = None
+
+        self._steps_done += 1
         return action_idx
 
     def learn(self, old_obs, new_obs, action):
