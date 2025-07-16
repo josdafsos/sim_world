@@ -45,6 +45,8 @@ class Terrain:
         String, following options are available:
         random - (default) fully random world,
         consistent_random - random world with gradual changes in height and tile content
+        :param reset_on_dead_world - if True the world is monitored for being "dead", i.e without any vegetation.
+        In which case it will be recreated. New random generation is made for corresponding generation options
         """
 
         # --- visual settings ---
@@ -63,6 +65,7 @@ class Terrain:
         self.enable_map_loop_visualization = enable_map_loop_visualization and is_round_map
         self.map_size = size
         self.terrain_map: list[list[Tile | ...]] = [[None for _ in range(self.map_size[1])] for _ in range(self.map_size[0])]
+        self.map_generation_method: str = generation_method
 
         self.height_mat = np.zeros(self.map_size)
         self.water_source_mat = np.zeros(self.map_size)
@@ -71,27 +74,65 @@ class Terrain:
         self.pad_moisture_level_mat = np.pad(self.moisture_level_mat, pad_width=1, mode='wrap')
         self.water_relative_height = np.zeros(self.map_size)
         self.absorbtion_coeff_mat = np.zeros(self.map_size)
-        self.vegetation_presence_map = np.zeros(self.map_size)  # 1 if any vegetation is presented, otherwise 0  # TODO initialize
+        self.vegetation_presence_map = np.zeros(self.map_size)  # 1 if any vegetation is presented, otherwise 0. For this case is more convenient than boolean
 
         # --- other settings ---
-        self.verbose = verbose
-        self.total_steps = 0
-        self.autoplay = False
+        self.verbose: int = verbose  # see param description above
+        self.total_steps: int = 0  # counter for world updates (i.e. every 24 hours, not the creature steps), reset() sets it to 0
+        self.autoplay: bool = False  # If True, the world steps are called unstoppably. Used externally
         self.current_time_hours: int = 0  # current time of the day
-        self.creatures = []  # list of all creatures currently living in the world
+        self.creatures: list[...] = []  # list of all creatures currently living in the world
         self.is_new_step_visual: bool = True  # Set to true every time when the world has just made a step. Used for visual updates
+        self.reset_on_dead_world: bool = reset_on_dead_world  # flag to check if a "dead" world must be restarted
+        self.MONITORING_PERIOD: int = 10  # the interval of simulation steps at which monitoring occurs (checking for dead world and respawning creatures)
+
+        self.reset()
+
+    def reset(self) -> None:
+        """
+        Resets simulation, recreates world. Any of random generation options causes a new random world generation.
+        Autoplay option is untouched,
+        """
+        self.total_steps = 0
+        self.creatures = []
+
+        self.terrain_map = [[None for _ in range(self.map_size[1])] for _ in range(self.map_size[0])]
+        self.height_mat = np.zeros(self.map_size)
+        self.water_source_mat = np.zeros(self.map_size)
+        self.moisture_level_mat = np.zeros(self.map_size)
+        # wrapped padding on sides to reflect wrapped world
+        self.pad_moisture_level_mat = np.pad(self.moisture_level_mat, pad_width=1, mode='wrap')
+        self.water_relative_height = np.zeros(self.map_size)
+        self.absorbtion_coeff_mat = np.zeros(self.map_size)
+        self.vegetation_presence_map = np.zeros(self.map_size)
 
         for row in range(self.map_size[0]):
             for col in range(self.map_size[1]):
                 surrounding_tiles, _ = self._get_surrounding_tiles(row, col, self.terrain_map, search_diameter=3)
-                self.terrain_map[row][col] = Tile(self, surrounding_tiles, (row, col), generation_method)
+                self.terrain_map[row][col] = Tile(self, surrounding_tiles,
+                                                  (row, col),
+                                                  self.map_generation_method)
         for row in range(self.map_size[0]):
             for col in range(self.map_size[1]):
                 _, distance_sorted_tiles = self._get_surrounding_tiles(row, col, self.terrain_map, search_diameter=5)
                 self.terrain_map[row][col]._set_surrounding_tiles(distance_sorted_tiles)
-
         self.terrain_map = tuple(tuple(inner) for inner in self.terrain_map)
         self.camera_move("update")
+
+    def monitor(self) -> None:
+        """
+        Checks if the world's state meets following conditions:
+        - "dead" world
+        """
+
+        # checking dead world
+        if self.reset_on_dead_world:
+            # NOTE: The following condition checks for all plant types. However, some newly added plant types
+            # might not be useful to make world "living", i.e. to support animals as food. Thus, this condition must be
+            # re-iterated in the future
+            if np.sum(self.vegetation_presence_map) < 1:  # no living plant
+                print("The world has no vegetation, resetting...")
+                self.reset()
 
     def add_creature(self, creature: Creature, position: None | tuple[int, int] = None) -> None:
         """
@@ -201,9 +242,11 @@ class Terrain:
             self.step_vegetation_mat()
             self.step_water_mat()  # new water physics computation
 
-
             for creature in self.creatures:
                 creature.new_day()
+
+            if self.total_steps % self.MONITORING_PERIOD == 0:
+                self.monitor()
 
             self.total_steps += 1
 
@@ -632,7 +675,9 @@ class Tile:
         has_vegetation, plant_key = self.has_vegetation(vegetation_options)
         if not has_vegetation:
             return False
+
         del self.vegetation_dict[plant_key]
+        self.world.update_vegetation_presence(self.in_map_position, 0.0)
         return True
 
     def eat_from_tile(self, edible_options: tuple) -> bool:
