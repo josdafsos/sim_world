@@ -54,76 +54,99 @@ def switch_drawing_enabled(world, action, pressed_key_idx_list):
         else:
             print("Visualization disabled")
 
-keys_list = [
+keys_list = (
     {
-        "keys": [pygame.K_SPACE],
+        "keys": (pygame.K_SPACE,),
         "action": world_step,
         "last call time": time.time(),
         "last release time": time.time() - 5,
         "steps in row": 0,
     },
     {
-        "keys": [pygame.K_SPACE],
+        "keys": (pygame.K_SPACE,),
         "action": world_autoplay,
         "last call time": time.time(),
         "last release time": time.time() - 5,
         "steps in row": 0,
     },
     {
-        "keys": [pygame.K_p],
+        "keys": (pygame.K_p,),
         "action": world_autoplay_single_key_press,
         "last call time": time.time(),
         "last release time": time.time() - 5,
         "steps in row": 0,
     },
     {
-        "keys": [pygame.K_w,
+        "keys": (pygame.K_w,
                  pygame.K_s,
                  pygame.K_a,
                  pygame.K_d,
                  pygame.K_x,
-                 pygame.K_z,],
+                 pygame.K_z,),
         "action": camera_move,
         "last call time": time.time(),
         "steps in row": 0,
         "last release time": time.time() - 5,
-        "extra": ["up",
+        "extra": ("up",
                   "down",
                   "left",
                   "right",
                   "zoom in",
                   "zoom out",
-        ]
+                  )
     },
     {
-        "keys": [pygame.K_z],
+        "keys": (pygame.K_z,),
         "action": camera_fit,
         "last call time": time.time(),
         "last release time": time.time() - 5,
         "steps in row": 0,
     },
     {
-        "keys": [pygame.K_c],
+        "keys": (pygame.K_c,),
         "action": switch_drawing_enabled,
         "last call time": time.time(),
         "last release time": time.time() - 5,
         "steps in row": 0,
     },
-]
+)
 
-def parse_actions(world):
-    keys = pygame.key.get_pressed()
+def parse_actions(world, key_pressed, is_pressed: bool) -> None:
+    """
+    Checking the given pressed key and convert it into action
+    :param world: current Terrain instance on which operation is carried
+    :param key_pressed: pygame key of a pressed keyboard key
+    :param is_pressed:
+    :return: set True if the key is pressed, set False is the key is released
+    """
+    # NOTE current implementation does not support hold press detection, keyup detection is also needed for it
+
     for action in keys_list:
         pressed_key_idx_list = []
         for idx, single_key in enumerate(action["keys"]):
-            if keys[single_key]:
-                pressed_key_idx_list.append(idx)
+            if single_key == key_pressed:
+                if is_pressed:
+                    pressed_key_idx_list.append(idx)  # TODO this list can be excluded, but it requires also to rework action functions a bit
+                    action["action"](world, action, pressed_key_idx_list)
+                else:  # case when the button is released
+                    action["last release time"] = time.time()
+                break
         if not pressed_key_idx_list:
-            if action["steps in row"] > 0:
-                action["last release time"] = time.time()
-                action["steps in row"] = 0
-        else:
-            action["action"](world, action, pressed_key_idx_list)
+            action["steps in row"] = 0
+
+    # previous method that obtained pressed keys itself:
+    #keys = pygame.key.get_pressed()
+    # for action in keys_list:
+    #     pressed_key_idx_list = []
+    #     for idx, single_key in enumerate(action["keys"]):
+    #         if keys[single_key]:
+    #             pressed_key_idx_list.append(idx)
+    #     if not pressed_key_idx_list:
+    #         if action["steps in row"] > 0:
+    #             action["last release time"] = time.time()
+    #             action["steps in row"] = 0
+    #     else:
+    #         action["action"](world, action, pressed_key_idx_list)
 
 
 
