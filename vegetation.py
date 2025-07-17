@@ -208,6 +208,24 @@ class Cactus(Vegetation):
             return
         super().plant(tile, growing_power)
 
+    def _init_visual_vegetation(self):
+        self.visual_vegetation_list = tuple((random.random() * 0.7 + 0.3,  # plant size, max 1
+                                             random.random() * 0.3,  # X coordinate, as a proportion of tile width
+                                             random.random() * 0.3 + 0.5)  # Y coordinate, as a proportion of tile width
+                                            for _ in range(self.MAX_CNT))
+
+    def on_rescale(self):
+        """ This function is called if the width of Tile has changed"""
+        # NOTE: this function could somehow be moved to graphics
+        if not isinstance(self.texture, tuple) and self.tile.world is not None:
+            self.scaled_textures = []
+            width = self.tile.world.tile_width
+            for plant_idx in range(self.count):
+                plant = self.visual_vegetation_list[plant_idx]
+                scaled_size = width * self.MAX_LENGTH * plant[0] * self.size
+                self.scaled_textures.append(pygame.transform.scale(self.texture,
+                                                                   (scaled_size/2, scaled_size)))  # previously 0.5*...
+
     def draw(self, screen, pos, width, height_scale, height_pos):
         x_min = height_pos[0]
         y_min = height_pos[1]
@@ -227,8 +245,11 @@ class Cactus(Vegetation):
             for plant_idx in range(self.count):
                 plant = self.visual_vegetation_list[plant_idx]
                 self.tile.world.screen.blit(self.scaled_textures[plant_idx],
-                                   (x_min + plant[1] * width, y_min + plant[2] * width))
-                # TODO fix visualization bug with drawing too high texture offset from tile
+                                   (x_min + plant[1] * width,
+                                    y_min + plant[2] * width - self.scaled_textures[plant_idx].get_rect().height))
+
+            # highlight cactus position:
+            # pygame.draw.circle(screen, (255, 0, 0), (x_min + width/2, y_min + width/2), 5)
 
 
 class Grass(Vegetation):
