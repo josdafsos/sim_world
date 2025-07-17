@@ -10,7 +10,7 @@ import world_properties
 from world_properties import WorldProperties
 import vegetation
 from creatures import Creature
-import agents
+from agents import Agent
 
 # Define neighborhood shifts, used for computations of neighboring tiles effects
 # shifts = ((-1, 1), (0, 1), (1, 1),
@@ -35,7 +35,9 @@ class Terrain:
                  verbose: int = 0,
                  is_round_map: bool = True,
                  generation_method: str = 'random',
-                 reset_on_dead_world: bool = True):  # TODO
+                 reset_on_dead_world: bool = True,
+                 steps_to_reset_world: int = -1,
+                 creatures_to_respawn: tuple[tuple[Creature, Agent, int], ...] | None = None):
         """
         :param screen - pygame screen on which the world will be drawn
         :param size - (width, heigh) size of the generated map
@@ -47,6 +49,13 @@ class Terrain:
         consistent_random - random world with gradual changes in height and tile content
         :param reset_on_dead_world - if True the world is monitored for being "dead", i.e without any vegetation.
         In which case it will be recreated. New random generation is made for corresponding generation options
+        :param steps_to_reset_world: if positive, the world will be reset after the given amount of steps.
+        Note - there is a small margin of error steps after which the world will be reset
+        :param creatures_to_respawn - the world is monitored for the amount of specified creatures,
+        if the current creatures number is lower than the given integer, then additional creatures will be spawned
+        with a given agent.
+        Can be None, then nothing will be spawned.
+        Can be tuple of tuples of (Creature Class, agent instance, minimum count of creatures in the world)
         """
 
         # --- visual settings ---
@@ -81,9 +90,13 @@ class Terrain:
         self.total_steps: int = 0  # counter for world updates (i.e. every 24 hours, not the creature steps), reset() sets it to 0
         self.autoplay: bool = False  # If True, the world steps are called unstoppably. Used externally
         self.current_time_hours: int = 0  # current time of the day
-        self.creatures: list[...] = []  # list of all creatures currently living in the world
+        self.creatures: list[Creature, ...] = []  # list of all creatures currently living in the world
         self.is_new_step_visual: bool = True  # Set to true every time when the world has just made a step. Used for visual updates
+
+        # --- monitoring options ----
         self.reset_on_dead_world: bool = reset_on_dead_world  # flag to check if a "dead" world must be restarted
+        self.steps_to_reset_world: int = steps_to_reset_world
+        self.creatures_to_respawn: tuple[tuple[Creature, Agent, int], ...] | None = creatures_to_respawn
         self.MONITORING_PERIOD: int = 10  # the interval of simulation steps at which monitoring occurs (checking for dead world and respawning creatures)
 
         self.reset()
@@ -133,6 +146,21 @@ class Terrain:
             if np.sum(self.vegetation_presence_map) < 1:  # no living plant
                 print("The world has no vegetation, resetting...")
                 self.reset()
+                return
+        if 0 < self.steps_to_reset_world < self.total_steps:
+            print(f"Maximum world steps of {self.steps_to_reset_world} reached, resetting...")
+            self.reset()
+            return
+
+        # checking creatures count
+        if self.creatures_to_respawn is not None:
+            creatures_cnt_dict = {}
+            for creature in self.creatures:
+                creatures_cnt_dict[creature.NAME] = creatures_cnt_dict.get(creature.NAME, 0) + creature.species_cnt
+            for spawn_creature in self.creatures_to_respawn:
+                if (spawn_creature[0].NAME not in creatures_cnt_dict or
+                        creatures_cnt_dict[spawn_creature[0].NAME] < spawn_creature[2]):
+                    self.add_creature(spawn_creature[0](spawn_creature[1]))
 
     def add_creature(self, creature: Creature, position: None | tuple[int, int] = None) -> None:
         """
@@ -154,7 +182,10 @@ class Terrain:
         for x, y in vegetation_idx:
             tile = self.terrain_map[x][y]
             for key in list(tile.vegetation_dict.keys()):
-                tile.vegetation_dict[key].prepare_step_vegetation()
+                # one plant can delete another in the middle of this cycle
+                # that's why the key validation condition is needed
+                if key in tile.vegetation_dict:
+                    tile.vegetation_dict[key].prepare_step_vegetation()
 
     def step_vegetation_mat(self):
         vegetation_idx = np.argwhere(self.vegetation_presence_map > 0.5)  # indexes of all tiles with vegetation
@@ -334,7 +365,7 @@ class Terrain:
 
         return surrounding_tiles, distance_sorted_tiles
 
-    def camera_move(self, direction: str, is_camera_rescaled = False):
+    def camera_move(self, direction: str, is_camera_rescaled: bool = False):
         step = 0.5 * self.tile_width
 
         if direction == "left":
@@ -365,6 +396,12 @@ class Terrain:
 
             for creature in self.creatures:
                 creature.on_rescale()  # changing texture sizes
+            vegetation_idx = np.argwhere(self.vegetation_presence_map > 0.5)  # indexes of all tiles with vegetation
+            for x, y in vegetation_idx:
+                for key in self.terrain_map[x][y].vegetation_dict:
+                    self.terrain_map[x][y].vegetation_dict[key].on_rescale()
+
+            # TODO also rescale texture for tiles (texturing is not implemented there yet)
 
         start_x = -int(self.camera_pos[0] / self.tile_width)
         end_x = int(start_x + self.screen.get_width() / self.tile_width + 1)
@@ -574,7 +611,7 @@ class Tile:
         self.modifiers: list = []
         self.surround_tiles_dict: dict = {}
         self.in_map_position: tuple[int, int] = in_map_position  # (row, col) indexes of the tile in the world
-        self.vegetation_dict: dict = {}
+        self.vegetation_dict: dict = {}  # str type : instance
         self.dead_cnt: int = 0  # number of dead bodies on the tile
         self.dead_creature: Creature | None = None  # temporary variable, will be used for drawing mostly
         self.nutrition = 0
@@ -616,6 +653,8 @@ class Tile:
         self.height_level = max(0.0, self.height_level)  # clipping height level between [0, 1]
         self.height_level = min(1.0, self.height_level)
 
+        self.highest_content_type: str = sorted(tile_content, key=tile_content.get, reverse=True)[0]  # writing the highest content
+
         self._update_nutrition()  # computing nutrition of the soil based on soils in the tile
         self.water: Water = Water(self)  # wouldn't it be better to inherit water instead of making an instance?!
 
@@ -631,8 +670,7 @@ class Tile:
                         self.vegetation_dict["grass"] = vegetation.Grass(self)
 
                     self.vegetation_dict["grass"].plant(self)
-
-                print("added ", generation_property[0])
+                # print("added ", generation_property[0])
 
         self.water.update_absorbtion_coeff()
         self.world.update_tile_height(self.in_map_position, self.height_level)
@@ -642,16 +680,19 @@ class Tile:
         self.texture: tuple[float, float, float] | str | None = None  # if None, auto texture will be assigned
         self._set_tile_texture_by_soil()
 
-    def _set_tile_texture_by_soil(self):
+    def _set_tile_texture_by_soil(self) -> None:
         """
         Updates tile texture based on soil content. Does nothing if custom texture is applied
+        Also updates self.highest_content_type variable
         :return:
         """
-        if isinstance(self.texture, str):  # if custom texture is applied doing nothing
-            return
 
-        highest_content_type = sorted(self.content_dict, key=self.content_dict.get, reverse=True)[0]
-        self.texture = world_properties.soil_types[highest_content_type]["color"]
+        self.highest_content_type = sorted(self.content_dict, key=self.content_dict.get, reverse=True)[0]
+
+        if isinstance(self.texture, str):  # if custom texture is applied doing nothing
+            # TODO texture must be updated according to the corresponding texture, if it not custom
+            return
+        self.texture = world_properties.soil_types[self.highest_content_type]["color"]
 
     def _update_nutrition(self):
         """
@@ -662,6 +703,11 @@ class Tile:
             self.nutrition += self.content_dict[key] * world_properties.soil_types[key]["nutritional value"]
 
     def has_vegetation(self, vegetation_list: tuple[str, ...]):
+        """
+        Searches for vegetation.TYPE, returns true if any from the input tuple is presented
+        :param vegetation_list:
+        :return:
+        """
         has_vegetation = False
         existing_plant_key = None
         for plant in vegetation_list:
@@ -671,8 +717,24 @@ class Tile:
                 break
         return has_vegetation, existing_plant_key
 
+    def has_vegetation_group(self, vegetation_group_list: tuple[str, ...]):
+        """
+        Searches for vegetation.GROUP, returns true if any from the input tuple is presented
+        :param vegetation_group_list:
+        :return:
+        """
+        has_vegetation = False
+        existing_plant_key = None
+        for key in self.vegetation_dict:
+            if self.vegetation_dict[key].GROUP in vegetation_group_list:
+                has_vegetation = True
+                existing_plant_key = key
+                break
+
+        return has_vegetation, existing_plant_key
+
     def consume_vegetation(self, vegetation_options) -> bool:
-        has_vegetation, plant_key = self.has_vegetation(vegetation_options)
+        has_vegetation, plant_key = self.has_vegetation_group(vegetation_options)
         if not has_vegetation:
             return False
 

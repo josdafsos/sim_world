@@ -2,7 +2,7 @@ import pygame
 import time
 
 def world_step(world, action, key_idx_list):
-    if time.time() - action["last call time"] > 0.250 / (action["steps in row"] + 1):
+    if time.time() - action["last call time"] > 0.200 / (action["steps in row"] + 1):
         if world.autoplay:
             world.autoplay = False
             print("world autoplay disabled")
@@ -40,7 +40,7 @@ def camera_move(world, action, pressed_key_idx_list):
 
 def camera_fit(world, action, pressed_key_idx_list):
     action["last call time"] = time.time()
-    if time.time() - action["last release time"] < 0.500:
+    if time.time() - action["last release time"] < 0.300:
         world.camera_fit_view()
     action["steps in row"] = min(action["steps in row"] + 1, 30)
 

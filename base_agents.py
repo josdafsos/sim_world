@@ -209,7 +209,9 @@ class DQNBaseClass(Agent, Observable):
                 print("sum steps equals zero, average reward cannot be computed")
             self.sum_steps = 0
             self.sum_reward = 0
-            print("saving model, " + self.AGENT_NAME + " ", datetime.now(), ". Average reward for saving iteration: ", average_reward)
+            print("saving model, " + self.AGENT_NAME + " ", datetime.now(),
+                  ". Average reward for saving iteration: ", average_reward,
+                  " Epsilon: ", self.epsilon)
         self.model.save(self.model_path)
 
     def _train_network(self):

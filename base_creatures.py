@@ -11,6 +11,7 @@ import warnings
 from collections import deque
 
 from base_agents import MemoryFrameStack
+from graphics import graphics
 
 
 def get_movement_difficulty_walk_swim(tile_initial, tile_to_move) -> float:
@@ -107,7 +108,8 @@ class Creature:
         self.world = None
 
         if isinstance(texture, str):
-            self.texture = pygame.image.load("textures//" + texture).convert_alpha()
+            #self.texture = pygame.image.load("textures//" + texture).convert_alpha()
+            self.texture = graphics.get_texture(texture)
         else:
             self.texture = texture  # can be texture or a color of a square
         self.scaled_texture = None
@@ -219,6 +221,7 @@ class Creature:
 
     def on_rescale(self):
         """ This function must be called if the width of Tile has changed"""
+        # NOTE: this function could somehow be moved to graphics
         if not isinstance(self.texture, tuple) and self.world is not None:
             width = self.world.tile_width
             self.scaled_texture = pygame.transform.scale(self.texture,
@@ -339,7 +342,7 @@ class Creature:
         ]
         nearby_tiles = self.tile.get_surrounding_tile(self.VISION_DISTANCE)
         for tile in nearby_tiles:
-            has_vegetation, _ = tile.has_vegetation(self.CONSUMABLE_FOOD_TYPES)
+            has_vegetation, _ = tile.has_vegetation_group(self.CONSUMABLE_FOOD_TYPES)
             creature = self.world.get_creature_on_tile(tile)
             if creature is None:
                 creature_id = 0
@@ -349,7 +352,8 @@ class Creature:
                 creature_cnt = creature.species_cnt / creature.MAX_SPECIES_CNT
 
             sub_obs = [
-                int(has_vegetation),
+                int(has_vegetation),  # TODO another input must be given such as "has food".
+                                        # Vegetation does not necessary mean food for carnivourns
                 # self._get_movement_difficulty(tile),  # reserved for movement cost. Probably needs normalization
                 self.get_movement_difficulty(self.tile, tile),
                 creature_id,  # Other creature id if it is presented at the tile

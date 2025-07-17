@@ -1,15 +1,14 @@
 import time
 
-import pygame
-
 import keyboard_actions
 import terrain
 import creatures
 import agents
-import world_properties
+from graphics import graphics
 
 import cProfile
 import pstats
+import pygame
 
 
 if __name__ == '__main__':
@@ -20,38 +19,35 @@ if __name__ == '__main__':
     if count_execution_time:
         print("Debug option enabled: count_execution_time")
 
-    # Initialize pygame
-    pygame.init()
-    # WIDTH, HEIGHT = 700, 600
-    WIDTH, HEIGHT = 600, 600
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Sim world")
-
-    world = terrain.Terrain(screen,
-                            (40, 40),
-                            verbose=0,
-                            generation_method='consistent_random',  # see other options in the description, 'consistent_random'
-                            )
-    world.camera_fit_view()
-    # world.multiple_steps(100)
-
-    random_cow_agent = agents.RandomCow()
+    screen = graphics.get_screen()
+    # random_cow_agent = agents.RandomCow()
     dqn_cow_agent = agents.DQNCow(verbose=1,
                                   epsilon=(1.0, 0.05, int(1e7)),
                                   agent_version="new_agent")
     memory_wolf_agent = agents.DQNMemoryWolf(verbose=1)
-    # random_cow = creatures.Creature(random_cow_agent, texture="cow.png")
     cow_agent = dqn_cow_agent
-    # dqn_wolf_agent = agents.DQNWolf(verbose=1)
-    #world.add_creature(creatures.Creature(random_cow_agent))
-    #world.add_creature(creatures.Creature(random_cow_agent))
 
-    world.add_creature(creatures.Cow(cow_agent, texture="cow_t.png", verbose=0))
-    world.add_creature(creatures.Wolf(memory_wolf_agent, texture="wolf_t.png", verbose=0))
+    # following creatures will be monitored in the world and respawn if their count is lower that the threshold
+    creatures_to_respawn = (
+        (creatures.Cow, dqn_cow_agent, 6),
+        (creatures.Wolf, memory_wolf_agent, 6),
+    )
+
+    world = terrain.Terrain(screen,
+                            (20, 20),
+                            verbose=0,
+                            generation_method='consistent_random',  # see other options in the description
+                            steps_to_reset_world=100_000,
+                            creatures_to_respawn=creatures_to_respawn,
+                            )
+    world.camera_fit_view()
+    # world.multiple_steps(100)
+    # world.add_creature(creatures.Cow(cow_agent, texture="cow_t.png", verbose=0))
+    # world.add_creature(creatures.Wolf(memory_wolf_agent, texture="wolf_t.png", verbose=0))
 
     # Main loop
     running = True
-    steps_made_in_a_row = 0
+    # steps_made_in_a_row = 0
     time_step_made = time.time()
     last_render_time = time.time()
 
@@ -60,18 +56,6 @@ if __name__ == '__main__':
         profiler.enable()
 
     while running:
-
-        # if len(world.creatures) < 4:
-        cnt = 0
-        has_wolf = False
-        for creature in world.creatures:
-            cnt += creature.species_cnt
-            has_wolf = has_wolf or creature.CREATURE_ID == world_properties.WOLF_ID
-        if cnt <= 5:
-            world.add_creature(creatures.Cow(cow_agent, texture="cow_t.png", verbose=0))
-            # world.add_creature(creatures.Wolf(dqn_wolf_agent, texture="wolf_t.png", verbose=0))
-        if not has_wolf:
-            world.add_creature(creatures.Wolf(memory_wolf_agent, texture="wolf_t.png", verbose=0))
 
         # Handle events
         for event in pygame.event.get():

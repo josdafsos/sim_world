@@ -9,6 +9,7 @@ from base_creatures import Creature
 import base_creatures
 
 
+
 class Cow(Creature):
     NAME = "cow"
     MAX_HP = 10.0
@@ -37,7 +38,7 @@ class Cow(Creature):
 
     def __init__(self, agent,
                  self_tile=None,
-                 texture: str | tuple[int, int, int] = (255, 50, 50),
+                 texture: str | tuple[int, int, int] = "cow_t.png",  #(255, 50, 50),
                  verbose: int = 0,
                  creature_to_copy=None):
 
@@ -69,7 +70,7 @@ class Cow(Creature):
         ]
         nearby_tiles = self.tile.get_surrounding_tile(self.VISION_DISTANCE)
         for tile in nearby_tiles:
-            has_vegetation, _ = tile.has_vegetation(self.CONSUMABLE_FOOD_TYPES)
+            has_vegetation, _ = tile.has_vegetation_group(self.CONSUMABLE_FOOD_TYPES)
             creature = self.world.get_creature_on_tile(tile)
             if creature is None:
                 creature_id = 0
@@ -121,3 +122,15 @@ class Wolf(Cow):
 
     OBSERVATION_SPACE: tuple[int,] = (42,)  # 106 for radius 2
     ACTION_SPACE: int = 27  # [{-1, 0, 1}, {-1, 0, 1}, {0, 1, 2}
+
+    def __init__(self, agent,
+                 self_tile=None,
+                 texture: str | tuple[int, int, int] = "wolf_t.png",  #(255, 50, 50),
+                 verbose: int = 0,
+                 creature_to_copy=None):
+
+        super().__init__(agent,
+                         self_tile,
+                         texture,
+                         verbose,
+                         creature_to_copy)
