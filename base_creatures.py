@@ -35,6 +35,9 @@ def get_movement_difficulty_walk_swim(tile_initial, tile_to_move) -> float:
 
 
 class Creature:
+    # TODO for observations, feed not edible or not, but the plant time. And probably plant group also.
+    # That is more challenging, but animals could learn to distinguish various vegetation types
+
     """ Base class for any creature """
 
     NAME: str = "default creature"

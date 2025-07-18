@@ -196,6 +196,9 @@ class Terrain:
 
     def step_water_mat(self):
         """ Computes water physics """
+        # TODO limit max water level
+        # TODO there seems to be a bug after many simulation steps where water visually disappears, but seem to be
+        # still present
 
         water_abs_height = self.height_mat + self.water_relative_height
         pad_abs_water_level = np.pad(water_abs_height, pad_width=1, mode='wrap')  # wrapping for round world. TODO no wraping option for a boundary world
@@ -267,11 +270,15 @@ class Terrain:
             #         self.terrain_map[row][col].prepare_step_tile()
             self.prepare_step_vegetation_mat()
 
+            # TODO currently in the following loop dead bodies are computed
+            # The loop can be optimized by implementing "active tiles matrix", tile items or something like that and
+            # looping through this entries only
             for row in range(self.map_size[0]):
                 for col in range(self.map_size[1]):
                     self.terrain_map[row][col].step_tile(self.enable_visualization)  #(surrounding_tiles, self.enable_visualization)
+
+            self.step_water_mat()  # new water physics computation, done in single step without preparation
             self.step_vegetation_mat()
-            self.step_water_mat()  # new water physics computation
 
             for creature in self.creatures:
                 creature.new_day()
@@ -666,10 +673,8 @@ class Tile:
                     self.water.add_water_source(water_source_intensity)
                     self.modifiers.append([generation_property[0], water_source_intensity])   # second element is generating speed
                 elif generation_property[0] == "grass":
-                    if "grass" not in self.vegetation_dict:
-                        self.vegetation_dict["grass"] = vegetation.Grass(self)
+                    vegetation.Grass(self)
 
-                    self.vegetation_dict["grass"].plant(self)
                 # print("added ", generation_property[0])
 
         self.water.update_absorbtion_coeff()

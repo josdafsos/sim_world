@@ -25,15 +25,25 @@ class Vegetation:
     MASS: float = 1.0  # mass of a single plant (assumed in kg, kinda). Used in interactions with vegetation. # TODO implement
 
     TYPE = "base class"  # type is a unique identifier of a class
-    # TODO implement that plants of the same group cannot be on the same tile with each other
     GROUP = "base class group"  # group is an identifier of a collection of vegetation types, such as
     # various types of grass or trees
 
-    def __init__(self, self_tile, texture: str | tuple[int, int, int] = (255, 255, 255)):
+    def __init__(self,
+                 self_tile,
+                 must_be_planted: bool = True,
+                 texture: str | tuple[int, int, int] = (255, 255, 255)):
         """
-        :param self_tile: Tile on which vegetation instance is swapned
+        Places vegetation on the corresponding Tile if that is possible.
+        After initialization, interact with vegetation only via corresponding tile instance.
+        :param self_tile: Tile on which vegetation instance is spawned
+        :param must_be_planted: do not use it, it is an internal parameter for correct initialization
         :param texture: string, name of a texture file. Default None - rendered with primitives if implemented.
         """
+
+        if self._check_same_group_exist(self_tile):  # block growing of vegetation of the same group in a tile
+            self.texture = None  # some of the attributes are attempted to be access by child class
+            # and thus they must be initialized even on failure to make a new plant on a tile
+            return
         self.tile = self_tile
         # tuple of vegetation_dict visual properties, each entity [size, x_pos, y_pos], size in (0, 1) range
         self.visual_vegetation_list: tuple[tuple[...]] = []
@@ -53,12 +63,15 @@ class Vegetation:
         self.moisture_buffer_value: float = 0.0  # stores moisture value computed during previous step
 
         # --- visual properties ---
-        if isinstance(texture, str):  # TODO implement textures for vegetation
+        if isinstance(texture, str):
             self.texture = graphics.get_texture(texture)
         else:
             self.texture = texture  # a default drawing method will be used if exist
         self.scaled_textures = []  # since there might be multiple plants the scaled textures is a list
         self.on_rescale()
+
+        if must_be_planted:
+            self.plant(self.tile)
 
     def _init_visual_vegetation(self):
         self.visual_vegetation_list = tuple((random.random() * 0.7 + 0.3,  # plant size, max 1
@@ -73,6 +86,17 @@ class Vegetation:
         """
         pass
 
+    def _check_same_group_exist(self, tile) -> bool:
+        """
+        Function checks if a vegetation of the same GROUP as self exists on a given tile
+        :param tile: tile to verify
+        :return: True if a plant of the same group already exists on a tile, otherwise returns False
+        """
+        for plant in tile.vegetation_dict.values():
+            if plant.GROUP == self.GROUP and plant.TYPE != self.TYPE:
+                return True
+        return False
+
     def plant(self, tile, growing_power=-1.0) -> None:
         """
         Function to create a new plant on a tile
@@ -82,7 +106,9 @@ class Vegetation:
         tile.world.update_vegetation_presence(tile.in_map_position, 1.0)  # Marking vegetation presence on the global map
 
         if self.TYPE not in tile.vegetation_dict:  # creating a new instance if it did not exist
-            tile.vegetation_dict[self.TYPE] = self.__class__(tile)
+            if self._check_same_group_exist(tile):  # blocking growth of same vegetation group on the same tile
+                return
+            tile.vegetation_dict[self.TYPE] = self.__class__(tile, texture=self.texture, must_be_planted=False)
         if tile.vegetation_dict[self.TYPE].size < 0:
             tile.vegetation_dict[self.TYPE].size = self.MIN_NEW_PLANT_SIZE + random.random() * 0.5
         if growing_power < 0:  # growing randomly
@@ -162,19 +188,32 @@ class Vegetation:
 
 
 class Cactus(Vegetation):
+    # TODO add effect of damaging anyone who try to eat it or to pass by
+
     MAX_LENGTH = 0.8
     MAX_CNT = 3
     MASS = 20
     TYPE = "cactus"
     GROUP = "grass"
     MAX_MOISTURE_REQUIRED: float = 1e-3  # cactus starts to die if there is too much moisture around
+    PLANTING_PROBABILITY_COEFF = 0.025
 
-    def __init__(self, self_tile):
+    def __init__(self, self_tile, texture="cactus_t.png", **kwargs):
         super().__init__(self_tile,
-                         texture="cactus_t.png",  # texture="cow_t.png",
+                         texture=texture,  # texture="cow_t.png",
+                         **kwargs,
                          )
         if not isinstance(self.texture, tuple):
-            self.MAX_LENGTH = 3  # scaling size if texture exists
+            self.MAX_LENGTH = 2  # scaling size if texture exists
+
+    def _has_neighbouring_cactus(self) -> bool:
+        """
+        :return: True if in a radius of one another cactus is presented
+        """
+        for tile in self.tile.get_surrounding_tile("1"):
+            if self.TYPE in tile.vegetation_dict:
+                return True
+        return False
 
     def _compute_plant_growth(self):
         """
@@ -186,16 +225,15 @@ class Cactus(Vegetation):
         total_moisture = np.sum(self.tile.world.pad_moisture_level_mat[self.moisutre_tile_idx])
         self.moisture_buffer_value = total_moisture
 
-        has_neighbour_cactus = False  # neighbouring cacutses kill each other
-        for tile in self.tile.get_surrounding_tile("1"):
-            if "cactus" in tile.vegetation_dict:
-                has_neighbour_cactus = True
-                break
+        has_neighbour_cactus = self._has_neighbouring_cactus()  # neighbouring cactuses kill each other
 
-        if has_neighbour_cactus or self.tile.world.water_relative_height[tile_x, tile_y] > 1e-4:  # plant is dying due to high water level
+        if self.tile.world.water_relative_height[tile_x, tile_y] > 1e-4:  # plant is dying due to high water level
             self.size *= 1 - 0.05 - random.random() * 0.2
-        elif total_moisture > self.MAX_MOISTURE_REQUIRED or random.random() < self.RANDOM_DECAY_PROBABILITY:
-            self.size *= 1 - 0.01 - random.random() * 0.05 - 0.01 * (1 - self.tile.nutrition)
+        elif (total_moisture > self.MAX_MOISTURE_REQUIRED or
+              random.random() < self.RANDOM_DECAY_PROBABILITY):
+            self.size *= 1 - 0.01 - random.random() * 0.05
+        elif has_neighbour_cactus:
+            self.size *= 1 - 0.0005 - random.random() * 0.0005
         else:
             self.size *= 1 + 0.001 + random.random() * 0.005
         self.size = min(self.size, 1)
@@ -204,7 +242,7 @@ class Cactus(Vegetation):
         """
         Cactus cannot be planted on anything but sand
         """
-        if tile.highest_content_type != "sand":
+        if tile.highest_content_type != "sand" or self._has_neighbouring_cactus():
             return
         super().plant(tile, growing_power)
 
@@ -240,8 +278,7 @@ class Cactus(Vegetation):
                                  (x_min + plant[1] * width, y_min + plant[2] * width - width * self.MAX_LENGTH * plant[0] * self.size),
                                  3)
         else:
-            if len(self.scaled_textures) != self.count:
-                self.on_rescale()
+            self.on_rescale()  # must be called all the time to update actual texture size. Can it be optimized?
             for plant_idx in range(self.count):
                 plant = self.visual_vegetation_list[plant_idx]
                 self.tile.world.screen.blit(self.scaled_textures[plant_idx],
@@ -259,9 +296,10 @@ class Grass(Vegetation):
     TYPE = "grass"
     GROUP = "grass"
 
-    def __init__(self, self_tile):
+    def __init__(self, self_tile, texture=(0, 120, 0), **kwargs):
         super().__init__(self_tile,
-                         texture=(0, 120, 0),  # texture="cow_t.png",
+                         texture=texture,  # texture="cow_t.png",
+                         **kwargs
                          )
 
     def _evolve(self) -> None:
@@ -272,9 +310,8 @@ class Grass(Vegetation):
         # checking catus evlotion. It can grow only in dry conditions and send
         if self.moisture_buffer_value < 1e-3 and self.tile.highest_content_type == 'sand':
             if random.random() < 0.05:  # some percent chance to evolve into cactus
-                self.tile.vegetation_dict["cactus"] = Cactus(self.tile)
-                self.tile.vegetation_dict["cactus"].plant(self.tile)
                 self._delete_plant()
+                Cactus(self.tile)
 
     def draw(self, screen, pos, width, height_scale, height_pos):
         x_min = height_pos[0]

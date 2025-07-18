@@ -69,7 +69,7 @@ if __name__ == '__main__':
         if world.autoplay:
             world.step()
 
-        if world.enable_visualization and time.time() - last_render_time > 0.04:
+        if world.enable_visualization and time.time() - last_render_time > 0.05:
             last_render_time = time.time()
             screen.fill((0, 0, 0, 255))  # Fill background with white
             world.draw()
