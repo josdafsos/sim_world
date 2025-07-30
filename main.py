@@ -11,10 +11,20 @@ import pstats
 import pygame
 
 
+# main priority TODO list
+# 2. Refactor creatures (especially actions), check observations, there was a problem with vegetation data
+# .  Option to disable learning for agents
+# 3. multiprocessing for simulation and faster agent training
+#  . Try to compile with Cython
+# 5. Optimize rendering for big maps (implement render accuracy levels) and refactor rendering
+# 4. Roads made by creatures frequently walking through same tiles
+# 6. Hint for controls and probably controls re-factoring
+# ? - should vegetation be implemented as TileItems?
+
 if __name__ == '__main__':
 
     # --- Debug flags ----
-    count_execution_time = False  # if True when program is finished, highlights of longest functions sent to console
+    count_execution_time = True  # if True when program is finished, highlights of longest functions sent to console
 
     if count_execution_time:
         print("Debug option enabled: count_execution_time")
@@ -34,11 +44,11 @@ if __name__ == '__main__':
     )
 
     world = terrain.Terrain(screen,
-                            (20, 20),
+                            (100, 100),
                             verbose=0,
                             generation_method='consistent_random',  # see other options in the description
                             steps_to_reset_world=100_000,
-                            creatures_to_respawn=creatures_to_respawn,
+                            # creatures_to_respawn=creatures_to_respawn,
                             )
     world.camera_fit_view()
     # world.multiple_steps(100)

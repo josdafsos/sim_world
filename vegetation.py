@@ -137,6 +137,7 @@ class Vegetation:
                 self._delete_plant()
 
     def _compute_plant_growth(self):
+        # TODO very time-consuming function, same for cactus growth function
         """
         Function to compute growth/decay of plant on a tile during simulation step.
         Can be redefined to obtain other plant growing behaviour.

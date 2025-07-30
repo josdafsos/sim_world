@@ -11,6 +11,8 @@ from world_properties import WorldProperties
 import vegetation
 from creatures import Creature
 from agents import Agent
+import tile_items
+from tile_items import TileItem
 
 # Define neighborhood shifts, used for computations of neighboring tiles effects
 # shifts = ((-1, 1), (0, 1), (1, 1),
@@ -92,6 +94,8 @@ class Terrain:
         self.current_time_hours: int = 0  # current time of the day
         self.creatures: list[Creature, ...] = []  # list of all creatures currently living in the world
         self.is_new_step_visual: bool = True  # Set to true every time when the world has just made a step. Used for visual updates
+        self.items_prepare_step_list = []  # list of items that have HAS_PREPARE_STEP == True
+        self.items_step_list = []  # list of items that have HAS_STEP == True
 
         # --- monitoring options ----
         self.reset_on_dead_world: bool = reset_on_dead_world  # flag to check if a "dead" world must be restarted
@@ -108,6 +112,8 @@ class Terrain:
         """
         self.total_steps = 0
         self.creatures = []
+        self.items_prepare_step_list = []
+        self.items_step_list = []
 
         self.terrain_map = [[None for _ in range(self.map_size[1])] for _ in range(self.map_size[0])]
         self.height_mat = np.zeros(self.map_size)
@@ -177,11 +183,39 @@ class Terrain:
         creature.set_tile(tile)
         self.creatures.append(creature)
 
+    def add_active_item(self, item: TileItem):
+        """
+        Adds tile item to the world, only adds active items, i.e. those that are executed on step or prepare step.
+        Passive items will not be added
+        :param item:
+        """
+        if item.HAS_PREPARE_STEP:
+            self.items_prepare_step_list.append(item)
+        if item.HAS_STEP:
+            self.items_step_list.append(item)
+
+    def delete_active_item(self, item: TileItem) -> None:
+        """
+        Deletes a give item from the world, shows Warning if such item does not exist
+        :param item:
+        """
+        is_deleted = False  # flag to check if the item was deleted from any of the lists
+        if item in self.items_prepare_step_list:
+            self.items_prepare_step_list.remove(item)
+            is_deleted = True
+        if item in self.items_step_list:
+            self.items_step_list.remove(item)
+            is_deleted = True
+        if not is_deleted:
+            warnings.warn("Request to remove an un-existing TileItem")
+
     def prepare_step_vegetation_mat(self):
         vegetation_idx = np.argwhere(self.vegetation_presence_map > 0.5)  # indexes of all tiles with vegetation
+        # TODO the list can be saved and elements can be erased and included instead of list re-creation every step. Should work faster
+        # TODO probably a list of tiles containing vegetation would be a simpler solution than a list of all vegetation
         for x, y in vegetation_idx:
             tile = self.terrain_map[x][y]
-            for key in list(tile.vegetation_dict.keys()):
+            for key in list(tile.vegetation_dict.keys()):  # TODO seems to consume too much time. Find another way to iterate + ocasional delete
                 # one plant can delete another in the middle of this cycle
                 # that's why the key validation condition is needed
                 if key in tile.vegetation_dict:
@@ -189,9 +223,10 @@ class Terrain:
 
     def step_vegetation_mat(self):
         vegetation_idx = np.argwhere(self.vegetation_presence_map > 0.5)  # indexes of all tiles with vegetation
+        # TODO same comment as for prepare step - create and modify single vegetation list instead of re-creating it on each loop
         for x, y in vegetation_idx:
             tile = self.terrain_map[x][y]
-            for key in list(tile.vegetation_dict.keys()):
+            for key in list(tile.vegetation_dict.keys()):  # TODO the list generation here takes a lot of time
                 tile.vegetation_dict[key].step_vegetation()
 
     def step_water_mat(self):
@@ -233,7 +268,8 @@ class Terrain:
 
         flow_difference = flow_in - flow_out
         self.moisture_level_mat += self.water_source_mat + flow_difference - absorption
-        self.moisture_level_mat[self.moisture_level_mat < 1e-4] = 0
+        self.moisture_level_mat[self.moisture_level_mat < 1e-4] = 0  # cutting low water level to zero
+        self.moisture_level_mat[self.moisture_level_mat > 1.0] = 1.0  # limiting maximum water level
         self.pad_moisture_level_mat = np.pad(self.moisture_level_mat, pad_width=1, mode='wrap')
 
         self.water_relative_height = np.maximum((self.moisture_level_mat - Water.MOISTURE_LEVEL_TO_RISE_HEIGHT) *
@@ -265,17 +301,15 @@ class Terrain:
             self.current_time_hours = 0
             self.is_new_step_visual = True  # set to False in draw call TODO set it false
 
-            # for row in range(self.map_size[0]):
-            #     for col in range(self.map_size[1]):
-            #         self.terrain_map[row][col].prepare_step_tile()
+            # --- prepare step section ---
             self.prepare_step_vegetation_mat()
 
-            # TODO currently in the following loop dead bodies are computed
-            # The loop can be optimized by implementing "active tiles matrix", tile items or something like that and
-            # looping through this entries only
-            for row in range(self.map_size[0]):
-                for col in range(self.map_size[1]):
-                    self.terrain_map[row][col].step_tile(self.enable_visualization)  #(surrounding_tiles, self.enable_visualization)
+            for item in self.items_prepare_step_list:
+                item.prepare_step()
+
+            # --- step section ---
+            for item in self.items_step_list:
+                item.step()
 
             self.step_water_mat()  # new water physics computation, done in single step without preparation
             self.step_vegetation_mat()
@@ -618,9 +652,9 @@ class Tile:
         self.modifiers: list = []
         self.surround_tiles_dict: dict = {}
         self.in_map_position: tuple[int, int] = in_map_position  # (row, col) indexes of the tile in the world
-        self.vegetation_dict: dict = {}  # str type : instance
-        self.dead_cnt: int = 0  # number of dead bodies on the tile
-        self.dead_creature: Creature | None = None  # temporary variable, will be used for drawing mostly
+        self.vegetation_dict: dict = {}  # str type : instance  TODO should it be replaced with a collection that holds vegetation groups?
+        # self.dead_cnt: int = 0  # number of dead bodies on the tile
+        # self.dead_creature: Creature | None = None  # temporary variable, will be used for drawing mostly
         self.nutrition = 0
 
         flattened_tiles = [item for sublist in surrounding_tiles if sublist is not None for item in sublist if
@@ -628,7 +662,7 @@ class Tile:
 
         # purely random tile
         self.height_level: float = random.random()  # height of the tile, can lay in range [0, 1]
-        tile_content = {}
+        tile_content = {}  # TODO is there a sorted data structure instead of dictionary?
         for key in world_properties.soil_types:
             tile_content[key] = random.random()
         highest_content_types = sorted(tile_content, key=tile_content.get, reverse=True)[:2]  # picking two biggest values
@@ -677,6 +711,11 @@ class Tile:
 
                 # print("added ", generation_property[0])
 
+        # items
+        self.all_items_dict = {}  # dictionary of all items on the tile, TODO it should be another data structure that would consider the drawing priority order
+        self.passive_items_dict = {}  # dictionary of passive items (subset of all items list)
+
+        # other
         self.water.update_absorbtion_coeff()
         self.world.update_tile_height(self.in_map_position, self.height_level)
         self.world.update_water_source(self.in_map_position, self.water.source_intensity)
@@ -756,36 +795,12 @@ class Tile:
         """
 
         # meat consumption case
-        if world_properties.MEAT in edible_options and self.dead_cnt > 0:
-            self.erase_dead_creature(1)
+        if world_properties.MEAT in edible_options and "dead body" in self.all_items_dict:
+            self.all_items_dict["dead body"].erase_dead_creature(1)
             return True
 
         # vegetation consumption
         return self.consume_vegetation(edible_options)
-
-    def add_dead_creature(self, bodies_cnt: int, creature: Creature):
-        """
-        Adds a new dead body to the tile, that will be considered as meet
-        :param bodies_cnt: number of new bodies
-        :param creature: Creature to be used for drawing dead body
-        :return:
-        """
-        self.dead_cnt += bodies_cnt
-        self.dead_creature = creature
-
-    def erase_dead_creature(self, bodies_cnt: int):
-        """
-        Reduces the number of bodies on the tile by a given amount.
-        :param bodies_cnt: positive value of number of the bodies to be erased
-        :return:
-        """
-        if bodies_cnt < 1:
-            warnings.warn(f"Incorrect value of the erased bodies was given, bodies_cnt = {bodies_cnt}")
-            return
-        self.dead_cnt -= bodies_cnt
-        if self.dead_cnt < 1:
-            self.dead_cnt = 0
-            self.dead_creature = None
 
     def change_height_and_content(self,
                                   height_difference: float,
@@ -852,6 +867,37 @@ class Tile:
             return self.surround_tiles_dict[radius_tuple[tile_range-1]]
         return self.surround_tiles_dict[tile_range]
 
+    def add_dead_creature(self, bodies_cnt: int, creature: Creature) -> None:
+        """
+                Adds a new dead body to the tile, that will be considered as meet
+                :param bodies_cnt: number of new bodies
+                :param creature: Creature to be used for drawing dead body
+        """
+        if "dead body" in self.all_items_dict:
+            self.all_items_dict["dead body"].add_dead_creature(bodies_cnt, creature)
+        else:
+            self._add_item(tile_items.DeadBody(self, bodies_cnt, creature))
+
+    def _add_item(self, item: TileItem) -> None:
+        """
+        Adds the given item to self and, in case item is active, to the world.
+        If item of the same type already exists on the tile, then the item will be re-recorded
+        """
+        if item.HAS_PASSIVE:
+            self.passive_items_dict[item.TYPE] = item
+        self.all_items_dict[item.TYPE] = item
+        self.world.add_active_item(item)
+
+    def delete_item(self, item: TileItem) -> None:
+        """
+        Deletes the given item from self and, in case item is active, from the world
+        """
+        if item.HAS_PASSIVE:
+            del self.passive_items_dict[item.TYPE]
+        del self.all_items_dict[item.TYPE]
+        if item.HAS_PREPARE_STEP or item.HAS_STEP:
+            self.world.delete_active_item(item)
+
     def prepare_step_tile(self):
         # --- NOTE ---
         # water and vegetation prepare operations were replace by matrix form called from terrain class
@@ -896,8 +942,11 @@ class Tile:
 
 
         self.water.draw(screen, pos, width, height_scale, height_pos, is_new_step)
-        if self.dead_creature is not None:
-            self.dead_creature.draw(screen, pos)
+        # if self.dead_creature is not None:
+        #     self.dead_creature.draw(screen, pos)
+        for item in self.all_items_dict.values():  # TODO draw items according to their drawing priority
+            item.draw(screen, pos)
+
         for plant in self.vegetation_dict.values():  # iteration is due to multiple kinds of plants
             plant.draw(screen, pos, width, height_scale, height_pos)
 

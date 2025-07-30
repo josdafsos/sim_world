@@ -8,7 +8,7 @@ WOLF_ID = -1
 
 @dataclass(frozen=True)
 class WorldProperties:
-    body_disappear_chance = 0.05  # probability that a lying body on a tile will disappear (only one, not all)
+    body_disappear_chance = 0.10  # probability that a lying body on a tile will disappear (only one, not all)
 
 
 soil_types = {
