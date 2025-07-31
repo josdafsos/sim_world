@@ -24,13 +24,13 @@ import pygame
 if __name__ == '__main__':
 
     # --- Debug flags ----
-    count_execution_time = True  # if True when program is finished, highlights of longest functions sent to console
+    count_execution_time = False  # if True when program is finished, highlights of longest functions sent to console
 
     if count_execution_time:
         print("Debug option enabled: count_execution_time")
 
     screen = graphics.get_screen()
-    # random_cow_agent = agents.RandomCow()
+    random_cow_agent = agents.RandomCow()
     dqn_cow_agent = agents.DQNCow(verbose=1,
                                   epsilon=(1.0, 0.05, int(1e7)),
                                   agent_version="new_agent")
@@ -39,16 +39,18 @@ if __name__ == '__main__':
 
     # following creatures will be monitored in the world and respawn if their count is lower that the threshold
     creatures_to_respawn = (
-        (creatures.Cow, dqn_cow_agent, 6),
-        (creatures.Wolf, memory_wolf_agent, 6),
+        (creatures.Cow, random_cow_agent, 6),
+        #(creatures.Cow, dqn_cow_agent, 6),
+        #(creatures.Wolf, memory_wolf_agent, 6),
     )
 
+
     world = terrain.Terrain(screen,
-                            (100, 100),
+                            (30, 30),
                             verbose=0,
                             generation_method='consistent_random',  # see other options in the description
                             steps_to_reset_world=100_000,
-                            # creatures_to_respawn=creatures_to_respawn,
+                            creatures_to_respawn=creatures_to_respawn,
                             )
     world.camera_fit_view()
     # world.multiple_steps(100)

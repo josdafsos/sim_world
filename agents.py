@@ -13,7 +13,8 @@ class RandomCow(Agent):
 
     def predict(self, obs) -> tuple[tuple[int, int], int]:
 
-        action = ((random.randint(-1, 1), random.randint(-1, 1)), random.randint(0, 2))
+        #action = ((random.randint(-1, 1), random.randint(-1, 1)), random.randint(0, 2))
+        action = random.randint(0, 25)
         return action
 
     def learn(self, old_obs, new_obs, action) -> None:
@@ -32,8 +33,8 @@ class DQNCow(DQNBaseClass):
 
         super().__init__(agent_version,
                          verbose,
-                         creatures.Creature.ACTION_SPACE,
-                         creatures.Creature.OBSERVATION_SPACE,
+                         creatures.Cow.ACTION_SPACE,
+                         creatures.Cow.OBSERVATION_SPACE,
                          epsilon=epsilon,
                          gradient_steps=-1)
 
@@ -86,8 +87,8 @@ class DQNMemoryWolf(MemoryFrameStack, DQNBaseClass):
         MemoryFrameStack.__init__(self, memory_frame_stack_length=10)
         DQNBaseClass.__init__(self, agent_version,
                               verbose,
-                              creatures.Creature.ACTION_SPACE,
-                              creatures.Creature.OBSERVATION_SPACE,
+                              creatures.Wolf.ACTION_SPACE,
+                              creatures.Wolf.OBSERVATION_SPACE,
                               epsilon=0.20,
                               gradient_steps=-1)
 

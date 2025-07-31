@@ -7,7 +7,7 @@ import numpy as np
 import world_properties
 from base_creatures import Creature
 import base_creatures
-
+from creature_actions import *
 
 
 class Cow(Creature):
@@ -26,15 +26,19 @@ class Cow(Creature):
     IS_AFFECTING_ROADS = True  # defines if the creature can make a road by frequent walking on a tile
     SINGLE_CREATURE_STRENGTH = 1.0  # defines how much damage a creature per unit does during attack
 
+    AVAILABLE_ACTIONS = (Eat,
+                         Sleep,
+                         Move,
+                         Split, )
     OBSERVATION_SPACE = (42,)  # 106 for radius 2
-    ACTION_SPACE = 27  # [{-1, 0, 1}, {-1, 0, 1}, {0, 1, 2}
+    ACTION_SPACE = 26  # [{-1, 0, 1}, {-1, 0, 1}, {0, 1, 2}
 
     # activity that can be done towards selected tile,
     # options: move (also unify, reproduce, attack (if hostile), move onto the current tile = sleep); eat;
     # attack/split (if tile is empty, half of species go to the tile. If own tile is selected,
     # splits part of the species into random nearby location if free.
     # If the selected tile is occupied, the occupying creature is attacked even against friendly)
-    AVAILABLE_ACTIONS = ("move", "eat", "split/attack")   #, "split")  # split/attack is not implemented yet
+    #AVAILABLE_ACTIONS = ("move", "eat", "split/attack")   #, "split")  # split/attack is not implemented yet
 
     def __init__(self, agent,
                  self_tile=None,

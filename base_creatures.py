@@ -56,6 +56,7 @@ class Creature:
     IS_AFFECTING_ROADS: bool = True  # defines if the creature can make a road by frequent walking on a tile
     SINGLE_CREATURE_STRENGTH: float = 1.0  # defines how much damage a creature per unit does during attack
 
+    AVAILABLE_ACTIONS: tuple = tuple()  # tuple of all actions classes that a creature can perform
     OBSERVATION_SPACE: tuple[int,] = (42,)  # 106 for radius 2
     ACTION_SPACE: int = 27  # [{-1, 0, 1}, {-1, 0, 1}, {0, 1, 2}
 
@@ -64,8 +65,16 @@ class Creature:
     # attack/split (if tile is empty, half of species go to the tile. If own tile is selected,
     # splits part of the species into random nearby location if free.
     # If the selected tile is occupied, the occupying creature is attacked even against friendly)
-    AVAILABLE_ACTIONS: tuple[str, ...] = (
-        "move", "eat", "split/attack")  # , "split")  # split/attack is not implemented yet
+#    AVAILABLE_ACTIONS: tuple[str, ...] = (
+#        "move", "eat", "split/attack")  # , "split")  # split/attack is not implemented yet
+
+    @staticmethod
+    def get_observation_action_spaces() -> [int, int]:
+        """
+        :return: tuple with zeroth element a size of observation space and first element with size of action space
+        """
+        # TODO implement function
+        pass
 
     def __init__(self, agent,
                  self_tile=None,
@@ -109,9 +118,11 @@ class Creature:
         self.tile = self_tile
         self.verbose = verbose
         self.world = None
+        # a tuple to map action index given by an agent to action with a correct action argument
+        self._action_mapping_tuple: tuple = tuple()
+        self._init_actions()
 
         if isinstance(texture, str):
-            #self.texture = pygame.image.load("textures//" + texture).convert_alpha()
             self.texture = graphics.get_texture(texture)
         else:
             self.texture = texture  # can be texture or a color of a square
@@ -173,45 +184,48 @@ class Creature:
 
         if self.verbose > 0:
             print(f"creature {self} acts")
+
         if self.species_cnt < 1:
             warnings.warn("a dead creature is trying to make a move")
             self.apply_damage(1000.0)
             return
-
-        if self.days_since_death > 0:
-            # TODO implement activities happening with the body
-            return
-
         if self._agent is None:
             warnings.warn("a creature with no _agent was requested to make an action")
             return
 
         has_done_action = False
-        is_final_action = False
 
         while self.species_cnt > 0 and self.days_since_death < 1:
+            # old implementation
             # action tuple (tile relative number {(-1, -1), (1,0), (-1,1), etc}, action number)
-            action = self._idx_to_action(self._agent.predict(self.observation))
-            if self.verbose > 0:
-                print(f"action: {action}, ({self.AVAILABLE_ACTIONS[action[1]]})")
-            if self.AVAILABLE_ACTIONS[action[1]] == "move":
-                if action[0] == (0, 0):
-                    self._sleep(has_done_action)
-                    is_final_action = True
-                else:
-                    self._move(action[0])
-            elif self.AVAILABLE_ACTIONS[action[1]] == "eat":
-                self._eat(action[0])
-            elif self.AVAILABLE_ACTIONS[action[1]] == "split/attack":
-                self._split_or_attack(action[0])
-            else:
-                warnings.warn(f"Warning, unknown action is called, action index: {action[1]}")
-                break
+            # action = self._idx_to_action(self._agent.predict(self.observation))
+            # if self.verbose > 0:
+            #     print(f"action: {action}, ({self.AVAILABLE_ACTIONS[action[1]]})")
+            # if self.AVAILABLE_ACTIONS[action[1]] == "move":
+            #     if action[0] == (0, 0):
+            #         self._sleep(has_done_action)
+            #         is_final_action = True
+            #     else:
+            #         self._move(action[0])
+            # elif self.AVAILABLE_ACTIONS[action[1]] == "eat":
+            #     self._eat(action[0])
+            # elif self.AVAILABLE_ACTIONS[action[1]] == "split/attack":
+            #     self._split_or_attack(action[0])
+            # else:
+            #     warnings.warn(f"Warning, unknown action is called, action index: {action[1]}")
+            #     break
 
+            # new implementation
+            action_idx = self._agent.predict(self.observation)
+            action, action_option_number = self._action_mapping_tuple[action_idx]
+            if self.verbose > 0:
+                print(f"action: {action.TYPE}, option number: ({action_option_number})")
+            is_final_action = action.make_action(action_option_number, has_done_action)
             old_obs = self.observation
             self._update_obs()
             new_obs = self.observation
-            self._agent.learn(old_obs, new_obs, self._action_to_idx(action))
+            # self._agent.learn(old_obs, new_obs, self._action_to_idx(action))
+            self._agent.learn(old_obs, new_obs, action_idx)
             self.species_cnt_change = 0  # restoring the indication of death/birth
             has_done_action = True
             if self.species_cnt < 1 or self.days_since_death > 0:
@@ -308,6 +322,14 @@ class Creature:
             self.current_food = 0.0
         elif enable_heal:
             self.apply_heal(food_consumed)
+
+    def _init_actions(self):
+        tmp_action_mapping = []
+        for action_cls in self.AVAILABLE_ACTIONS:
+            action = action_cls(self)
+            for idx in range(action.ACTION_SPACE_SIZE):
+                tmp_action_mapping.append([action, idx])
+        self._action_mapping_tuple = tuple(tmp_action_mapping)
 
     def _attack(self, other_creature):
         own_attack = self.species_cnt * self.SINGLE_CREATURE_STRENGTH
@@ -495,3 +517,4 @@ class Creature:
         """ Converts action's index into a complex action structure """
         x, y, action = self.actions[action_idx]  # self.actions[action_idx]
         return ((x, y), action)
+
