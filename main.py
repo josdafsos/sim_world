@@ -12,14 +12,12 @@ import pygame
 
 
 # main priority TODO list
-# 2. Refactor creatures (especially actions), check observations, there was a problem with vegetation data
-# .  Option to disable learning for agents
 # 3. multiprocessing for simulation and faster agent training
-#  . Try to compile with Cython
 # 5. Optimize rendering for big maps (implement render accuracy levels) and refactor rendering
 # 4. Roads made by creatures frequently walking through same tiles
 # 6. Hint for controls and probably controls re-factoring
 # ? - should vegetation be implemented as TileItems?
+# ? - Try to compile with Cython computationally intensive functions
 
 if __name__ == '__main__':
 
@@ -32,21 +30,20 @@ if __name__ == '__main__':
     screen = graphics.get_screen()
     random_cow_agent = agents.RandomCow()
     dqn_cow_agent = agents.DQNCow(verbose=1,
-                                  epsilon=(1.0, 0.05, int(1e7)),
+                                  epsilon=(1.0, 0.075, int(2e6)),
                                   agent_version="new_agent")
-    memory_wolf_agent = agents.DQNMemoryWolf(verbose=1)
-    cow_agent = dqn_cow_agent
+    # memory_wolf_agent = agents.DQNMemoryWolf(verbose=1)
 
     # following creatures will be monitored in the world and respawn if their count is lower that the threshold
     creatures_to_respawn = (
-        (creatures.Cow, random_cow_agent, 6),
-        #(creatures.Cow, dqn_cow_agent, 6),
-        #(creatures.Wolf, memory_wolf_agent, 6),
+        #(creatures.Cow, random_cow_agent, 6),
+        (creatures.Cow, dqn_cow_agent, 6),
+        # (creatures.Wolf, memory_wolf_agent, 6),
     )
 
 
     world = terrain.Terrain(screen,
-                            (30, 30),
+                            (15, 15),
                             verbose=0,
                             generation_method='consistent_random',  # see other options in the description
                             steps_to_reset_world=100_000,

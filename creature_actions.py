@@ -27,7 +27,7 @@ def action_attack(attacking_creature, other_creature):
 class Action:
     ACTION_SPACE_SIZE: int = -1  # size of input action set. Example, a walking creature can move to nearby tiles, 8 directions
     # (options) in total; a creature can go to sleep (only one option)
-    TYPE: str = "Base action"  #name of the action class
+    TYPE: str = "base action"  # name of the action class
 
     def __init__(self, creature):
         self.creature = creature
@@ -45,7 +45,7 @@ class Action:
 
 class Sleep(Action):
     ACTION_SPACE_SIZE = 1
-    TYPE = "Sleep"
+    TYPE = "sleep"
 
     def __init__(self, creature):
         super().__init__(creature)
@@ -60,8 +60,33 @@ class Sleep(Action):
 
 
 class Eat(Action):
+    """ Eat from the tile that a creature is standing on"""
+
+    ACTION_SPACE_SIZE = 1
+    TYPE = "eat"
+
+    def __init__(self, creature):
+        super().__init__(creature)
+
+    def make_action(self, action_number, has_done_actions, **kwargs) -> bool:
+
+        self.creature.movement_points -= 1.0
+        has_eaten_food = self.creature.tile.eat_from_tile(self.creature.CONSUMABLE_FOOD_TYPES)
+
+        if self.creature.verbose > 0:
+            print(f"eating at the current tile, success = {has_eaten_food}")
+        if has_eaten_food:
+            self.creature.current_food = min(self.creature.current_food + 5.0, self.creature.MAX_FOOD_SUPPLY)
+        else:
+            self.creature.consume_food(0.05)
+
+        return False
+
+
+class EatAround(Action):
+    """same as eat, but also allows to eat from surrounding tiles without movement to them"""
     ACTION_SPACE_SIZE = 9
-    TYPE = "Eat"
+    TYPE = "eat_around"
     TILE_POS_ACTION_MAPPING = ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 0), (0, 1), (1, -1), (1, 0), (1, 1))
 
     def __init__(self, creature):
@@ -78,7 +103,7 @@ class Eat(Action):
         has_eaten_food = tile_to_eat.eat_from_tile(self.creature.CONSUMABLE_FOOD_TYPES)
 
         if self.creature.verbose > 0:
-            print(f"eating at {relative_tile_pos}, success = {has_eaten_food}")
+            print(f"eating around at {relative_tile_pos}, success = {has_eaten_food}")
         if has_eaten_food:
             self.creature.current_food = min(self.creature.current_food + 5.0, self.creature.MAX_FOOD_SUPPLY)
         else:
@@ -88,7 +113,7 @@ class Eat(Action):
 
 class Move(Action):
     ACTION_SPACE_SIZE = 8
-    TYPE = "Move"
+    TYPE = "move"
     TILE_POS_ACTION_MAPPING = ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))
 
     def __init__(self, creature):
@@ -141,7 +166,7 @@ class Move(Action):
 
 class Split(Action):
     ACTION_SPACE_SIZE = 8
-    TYPE = "Split"
+    TYPE = "split"
     TILE_POS_ACTION_MAPPING = ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))
 
     def __init__(self, creature):

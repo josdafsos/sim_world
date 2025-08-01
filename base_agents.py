@@ -25,7 +25,7 @@ class Agent:
         """
         pass
 
-    def learn(self, old_obs, new_obs, action) -> None:
+    def learn(self, old_obs, new_obs, action, metadata) -> None:
         """ Implements learning of an _agent. Unnecessary to implement if _agent does not learn. """
         pass
 
@@ -102,23 +102,23 @@ class DQNBaseClass(Agent, Observable):
 
     def __init__(self, agent_version,
                  verbose: int,
-                 action_space,
-                 observation_space,
+                 creature_cls_or_operation_space: tuple | type,
                  learning_rate: float = 1e-5,
                  batch_size: int = 32,
                  epsilon: float | tuple[float, float, int] = 0.1,
                  gradient_steps: int = 1,
                  policy_kwargs: dict = None,
+                 learning_enabled: bool = True,
                  *args,
                  **kwargs
                  ):
         """
-
         :param agent_version:
         :param verbose: {0, 1, 2} if more than 0 adds status information into console,
         1 - base information, 2 - all information
-        :param action_space:
-        :param observation_space: observation space in a single observation frame (without memory stack);
+        :param creature_cls_or_operation_space: class of a creature to be controlled by the agent. Use to automatically get
+        observation and action spaces. Alternatively, tuple[int, int] can be given with manually set
+        [observation space, action space] values
         :param learning_rate:
         :param batch_size:
         :param epsilon: float [0, 1] probability of taking a random action instead of using agent's predict function
@@ -127,6 +127,8 @@ class DQNBaseClass(Agent, Observable):
         :param gradient_steps: {-1, positive integer} number of gradient steps for training the agent, -1 for max steps
         :param policy_kwargs: dictionary to define neural network topology. If None, default topology is used
         :param memory_frame_stack_length: {positive integer} number of observation frames stacked together
+        :param learning_enabled - default True. Allows agent to learn. Set to False to disable learning and
+        decrease computation time
         """
 
         # super().__init__(*args, **kwargs)
@@ -135,9 +137,16 @@ class DQNBaseClass(Agent, Observable):
         self.learning_rate: float = learning_rate  # for the model
         self.batch_size: int = batch_size  # for model
         self.verbose: int = verbose  # if > 0 then outputs _agent states and related info
-        self.actions: list = []
-        self.action_space = action_space
+        self.learning_enabled = learning_enabled
+
+        if isinstance(creature_cls_or_operation_space, tuple):
+            observation_space = creature_cls_or_operation_space[0]
+            action_space = creature_cls_or_operation_space[1]
+        else:
+            observation_space, action_space = creature_cls_or_operation_space.get_observation_action_spaces()
+
         Observable.__init__(self, observation_space)
+        self.action_space = action_space
 
         self.sum_reward: float = 0  # total reward before model is saved
         self.sum_steps: int = 0  # total steps before model is saved
@@ -224,15 +233,15 @@ class DQNBaseClass(Agent, Observable):
                 self._save_model()
                 self._saving_counter = 0
 
-    def _compute_reward(self, old_obs, new_obs, action) -> float:
+    def _compute_reward(self, old_obs, new_obs, action, metadata: dict = {}) -> float:
         """ Computes a reward for a given state"""
         pass
 
-    def _get_is_done(self, new_obs) -> bool:
+    def _get_is_done(self, new_obs, metadata: dict = {}) -> bool:
         """ Returns True if an episode is finished for the _agent. Returns False otherwise """
         pass
 
-    def predict(self, obs) -> tuple[tuple[int, int], int]:
+    def predict(self, obs) -> int:
         if random.random() < self.epsilon:
             action_idx = random.randint(0, self.action_space-1)
         else:
@@ -249,13 +258,16 @@ class DQNBaseClass(Agent, Observable):
         self._steps_done += 1
         return action_idx
 
-    def learn(self, old_obs, new_obs, action):
-        reward = self._compute_reward(old_obs, new_obs, action)
+    def learn(self, old_obs, new_obs, action, metadata: dict = {}):
+        if not self.learning_enabled:
+            return
+
+        reward = self._compute_reward(old_obs, new_obs, action, metadata)
 
         self.sum_reward += reward
         self.sum_steps += 1
 
-        done = self._get_is_done(new_obs)
+        done = self._get_is_done(new_obs, metadata)
         info = [{}]  # info must be a list of dicts
 
         action_idx = action   # self._action_to_idx(action)

@@ -162,10 +162,10 @@ class Terrain:
         if self.creatures_to_respawn is not None:
             creatures_cnt_dict = {}
             for creature in self.creatures:
-                creatures_cnt_dict[creature.NAME] = creatures_cnt_dict.get(creature.NAME, 0) + creature.species_cnt
+                creatures_cnt_dict[creature.TYPE] = creatures_cnt_dict.get(creature.TYPE, 0) + creature.species_cnt
             for spawn_creature in self.creatures_to_respawn:
-                if (spawn_creature[0].NAME not in creatures_cnt_dict or
-                        creatures_cnt_dict[spawn_creature[0].NAME] < spawn_creature[2]):
+                if (spawn_creature[0].TYPE not in creatures_cnt_dict or
+                        creatures_cnt_dict[spawn_creature[0].TYPE] < spawn_creature[2]):
                     self.add_creature(spawn_creature[0](spawn_creature[1]))
 
     def add_creature(self, creature: Creature, position: None | tuple[int, int] = None) -> None:
@@ -748,7 +748,8 @@ class Tile:
 
     def has_vegetation(self, vegetation_list: tuple[str, ...]):
         """
-        Searches for vegetation.TYPE, returns true if any from the input tuple is presented
+        Searches for vegetation.TYPE, returns true if any from the input tuple is presented.
+        See also has_vegetation_group method
         :param vegetation_list:
         :return:
         """
@@ -764,6 +765,7 @@ class Tile:
     def has_vegetation_group(self, vegetation_group_list: tuple[str, ...]):
         """
         Searches for vegetation.GROUP, returns true if any from the input tuple is presented
+        See also has_vegetation method
         :param vegetation_group_list:
         :return:
         """
@@ -786,6 +788,10 @@ class Tile:
         self.world.update_vegetation_presence(self.in_map_position, 0.0)
         return True
 
+    def has_meat(self) -> bool:
+        """ Returns True if a dead body is present on the tile, returns False otherwise"""
+        return tile_items.DeadBody.TYPE in self.all_items_dict
+
     def eat_from_tile(self, edible_options: tuple) -> bool:
         """
         Eats a food the list, meat consumption is in priority
@@ -795,8 +801,8 @@ class Tile:
         """
 
         # meat consumption case
-        if world_properties.MEAT in edible_options and "dead body" in self.all_items_dict:
-            self.all_items_dict["dead body"].erase_dead_creature(1)
+        if world_properties.MEAT in edible_options and self.has_meat():
+            self.all_items_dict[tile_items.DeadBody.TYPE].erase_dead_creature(1)
             return True
 
         # vegetation consumption
@@ -861,6 +867,11 @@ class Tile:
         self.surround_tiles_dict["012"] = tuple([self] + surrounding_tiles[1] + surrounding_tiles[2])
 
     def get_surrounding_tile(self, tile_range: int | str):
+        """
+        :param tile_range:  if str: ["01"] - self tile + 1 radius, or ["2"] only tiles in radius of 2 (not in 1 or 0),
+        if int is given returns all the tiles in a given radius + smaller radiuses, including self
+        :return: 1D list of Tile instances around the tile.
+        """
         if isinstance(tile_range, int):
             # yes, it is hardcoded for now
             radius_tuple = ("01", "012")
@@ -873,8 +884,8 @@ class Tile:
                 :param bodies_cnt: number of new bodies
                 :param creature: Creature to be used for drawing dead body
         """
-        if "dead body" in self.all_items_dict:
-            self.all_items_dict["dead body"].add_dead_creature(bodies_cnt, creature)
+        if tile_items.DeadBody.TYPE in self.all_items_dict:
+            self.all_items_dict[tile_items.DeadBody.TYPE].add_dead_creature(bodies_cnt, creature)
         else:
             self._add_item(tile_items.DeadBody(self, bodies_cnt, creature))
 
@@ -926,6 +937,8 @@ class Tile:
     def draw(self, screen, pos, width, is_new_step):
         height_scale = width * 0.5  # TODO remove this value from the draw function since it is accessasble via self.world.height_scale
         #  texture_color = world_properties.soil_types[self.content_list[0][0]]["color"]   # OBSOLETE, NOW THERE IS self.texture
+        # TODO optimize computations of height_pos, it must be done only once per tile and then passed as argument to
+        # sub-draw functions
         height_pos = [pos[0] + self.height_level * self.world.height_direction[0] * self.world.height_scale,
                       pos[1] + self.height_level * self.world.height_direction[1] * self.world.height_scale]
         # for now drawing the highest content only
