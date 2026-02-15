@@ -4,13 +4,12 @@ import warnings
 
 import pygame
 import numpy as np
-from scipy.ndimage import generic_filter
 
 import world_properties
 from world_properties import WorldProperties
 import vegetation
 from creatures import Creature
-from agents import Agent
+from agents.agents import Agent
 import tile_items
 from tile_items import TileItem
 
@@ -142,6 +141,8 @@ class Terrain:
         """
         Checks if the world's state meets following conditions:
         - "dead" world
+        - max world steps reached
+        - spawns missing creatures
         """
 
         # checking dead world

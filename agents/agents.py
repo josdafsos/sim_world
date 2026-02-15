@@ -2,7 +2,7 @@
 
 import random
 
-from base_agents import Agent, DQNBaseClass, MemoryFrameStack
+from agents.base_agents import Agent, DQNBaseClass, MemoryFrameStack
 import creatures
 
 

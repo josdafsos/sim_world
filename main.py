@@ -3,7 +3,7 @@ import time
 import keyboard_actions
 import terrain
 import creatures
-import agents
+from agents import agents
 from graphics import graphics
 
 import cProfile

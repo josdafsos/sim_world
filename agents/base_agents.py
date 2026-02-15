@@ -86,8 +86,21 @@ class Observable:
         The class must be inherited after all observation space modifying classes.
     """
 
-    def __init__(self, observation_space):
-        self.observation_space = np.array(observation_space)
+    def __init__(self, observation_space: int | None = None, creature_cls_or_operation_space = None):
+        """
+        :param observation_space default None, use this argument to set observation set manually
+        :param creature_cls_or_operation_space default None, if value is given observation and action spaces are automatically parsed
+        if both parameters are not None, then creature_cls_or_operation_space is used
+        """
+        if creature_cls_or_operation_space is not None:
+            if isinstance(creature_cls_or_operation_space, tuple):
+                self.observation_space, self.action_space  = creature_cls_or_operation_space
+            else:
+                self.observation_space, self.action_space = creature_cls_or_operation_space.get_observation_action_spaces()
+        elif observation_space is not None:
+            self.observation_space = np.array(observation_space)
+        else:
+            raise "Observable class cannot be initialized with both observation_space and creature_cls_or_operation_space set to None"
 
         if isinstance(self, MemoryFrameStack):
             assert hasattr(self, '_memory_frame_stack_length'), "MemoryFrameStack must be inherited before any class containing Observable"
@@ -139,14 +152,7 @@ class DQNBaseClass(Agent, Observable):
         self.verbose: int = verbose  # if > 0 then outputs _agent states and related info
         self.learning_enabled = learning_enabled
 
-        if isinstance(creature_cls_or_operation_space, tuple):
-            observation_space = creature_cls_or_operation_space[0]
-            action_space = creature_cls_or_operation_space[1]
-        else:
-            observation_space, action_space = creature_cls_or_operation_space.get_observation_action_spaces()
-
-        Observable.__init__(self, observation_space)
-        self.action_space = action_space
+        Observable.__init__(self, creature_cls_or_operation_space=creature_cls_or_operation_space)
 
         self.sum_reward: float = 0  # total reward before model is saved
         self.sum_steps: int = 0  # total steps before model is saved
@@ -275,5 +281,41 @@ class DQNBaseClass(Agent, Observable):
         self._train_network()
 
 
+class EvolBaseClass(Agent, Observable):
+    """ Base class for all Evolutionary agents """
 
+    AGENT_NAME = "NEATBaseClass"
+    AGENT_SAVING_FREQUENCY = 1_000_000
 
+    def __init__(self,
+                 creature_cls_or_operation_space,
+                 learning_enabled):
+        """
+        :param creature_cls_or_operation_space: class of a creature to be controlled by the agent. Use to automatically get
+        observation and action spaces. Alternatively, tuple[int, int] can be given with manually set
+        [observation space, action space] values
+        :param learning_enabled - default True. Allows agent to learn. Set to False to disable learning and
+        decrease computation time
+        """
+        Observable.__init__(self, creature_cls_or_operation_space)
+
+        self.learning_enabled: bool = learning_enabled
+        self.sum_reward: int = 0
+        self.sum_steps: int = 0
+
+    def _compute_reward(self, old_obs, new_obs, action, metadata: dict=None) -> float:
+        """ Computes a reward for a given state"""
+        if metadata is None:
+            metadata = {}
+        pass
+
+    def learn(self, old_obs, new_obs, action, metadata: dict=None):
+        if not self.learning_enabled:
+            return
+        if metadata is None:
+            metadata = {}
+
+        reward = self._compute_reward(old_obs, new_obs, action, metadata)
+
+        self.sum_reward += reward
+        self.sum_steps += 1

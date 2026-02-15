@@ -10,7 +10,7 @@ import random
 import warnings
 from collections import deque
 
-from base_agents import MemoryFrameStack
+from agents.base_agents import MemoryFrameStack
 from graphics import graphics
 
 
