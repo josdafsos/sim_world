@@ -12,9 +12,10 @@ import pygame
 
 
 # main priority TODO list
+# 1. !!! TODO there is a bug that dupes creatures, could be related to the split action
 # 3. multiprocessing for simulation and faster agent training
 # 5. Optimize rendering for big maps (implement render accuracy levels) and refactor rendering
-# 4. Roads made by creatures frequently walking through same tiles
+# 4. Roads made by creatures frequently walking through same tiles, progress depends on creature mass
 # 6. Hint for controls and probably controls re-factoring
 # ? - should vegetation be implemented as TileItems?
 # ? - Try to compile with Cython computationally intensive functions
@@ -42,8 +43,8 @@ if __name__ == '__main__':
     )
 
 
-    world = terrain.Terrain(screen,
-                            (15, 15),
+    world = terrain.Terrain((15, 15),
+                            screen=screen,
                             verbose=0,
                             generation_method='consistent_random',  # see other options in the description
                             steps_to_reset_world=100_000,

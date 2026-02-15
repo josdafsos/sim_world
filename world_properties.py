@@ -32,7 +32,7 @@ soil_types = {
 
 world_generation_properties = {
     "generation probabilities": [
-        ["water source", 0.003],  # 0.0015  # TODO make exponential decay probability for value of the source
+        ["water source", 0.01],  # 0.0015  # TODO make exponential decay probability for value of the source
         ["grass", 0.1]
     ]
 

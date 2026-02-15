@@ -29,8 +29,8 @@ class Terrain:
     HOURS_PER_STEP = 6  # how many hours are passed after each mini-step is made
 
     def __init__(self,
-                 screen,
                  size: tuple[int, int],
+                 screen=None,
                  enable_visualization: bool = True,
                  enable_map_loop_visualization: bool = False,
                  verbose: int = 0,
@@ -40,8 +40,8 @@ class Terrain:
                  steps_to_reset_world: int = -1,
                  creatures_to_respawn: tuple[tuple[Creature, Agent, int], ...] | None = None):
         """
-        :param screen - pygame screen on which the world will be drawn
         :param size - (width, heigh) size of the generated map
+        :param screen - pygame screen on which the world will be drawn; if None nothing will be drawn
         :param verbose - {0, 1, 2} sets the amount of information printed in the console
         :param is_round_map If true the map connects opposite ends of the map
         :param generation_method: a method to create a new world.
@@ -68,7 +68,8 @@ class Terrain:
         self.tile_width = 30
         self.height_scale = self.tile_width * self.HEIGHT_SCALE_COEFF  # original self.tile_width * 0.5
         self.enable_visualization = enable_visualization
-        self.font = pygame.font.SysFont(None, 48)
+        if self.screen is not None:  # TODO a graphics init func must be implemented, which will update setting on screen change
+            self.font = pygame.font.SysFont(None, 48)
 
         # --- map settings ---
         self.is_round_map = is_round_map
@@ -408,6 +409,8 @@ class Terrain:
         return surrounding_tiles, distance_sorted_tiles
 
     def camera_move(self, direction: str, is_camera_rescaled: bool = False):
+        if self.screen is None:
+            return
         step = 0.5 * self.tile_width
 
         if direction == "left":

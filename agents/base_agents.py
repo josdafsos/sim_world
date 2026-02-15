@@ -18,10 +18,15 @@ import utils
 
 
 class Agent:
-    def predict(self, obs) -> tuple[tuple[int, int], int]:
+    """
+    Base class of any agent. Must be inherited by any agent implementation.
+    Any agent must implement own predict function. Implementation of learn function is optional.
+    """
+    def predict(self, obs) -> int | tuple[tuple[int, int], int]:
         """
         Predicts action based on observation,
         action is in format: (tile relative number {(-1, -1), (1,0), (-1,1), etc.}, action number)
+        or action in format action index, which mapped to the correct tile-action_type format by a creature itself
         """
         pass
 
@@ -86,15 +91,19 @@ class Observable:
         The class must be inherited after all observation space modifying classes.
     """
 
-    def __init__(self, observation_space: int | None = None, creature_cls_or_operation_space = None):
+    def __init__(self,
+                 observation_space: int | None = None,
+                 creature_cls_or_operation_space=None,
+                 *args, **kwargs):
         """
         :param observation_space default None, use this argument to set observation set manually
         :param creature_cls_or_operation_space default None, if value is given observation and action spaces are automatically parsed
         if both parameters are not None, then creature_cls_or_operation_space is used
         """
+
         if creature_cls_or_operation_space is not None:
             if isinstance(creature_cls_or_operation_space, tuple):
-                self.observation_space, self.action_space  = creature_cls_or_operation_space
+                self.observation_space, self.action_space = creature_cls_or_operation_space
             else:
                 self.observation_space, self.action_space = creature_cls_or_operation_space.get_observation_action_spaces()
         elif observation_space is not None:
@@ -289,7 +298,8 @@ class EvolBaseClass(Agent, Observable):
 
     def __init__(self,
                  creature_cls_or_operation_space,
-                 learning_enabled):
+                 learning_enabled: bool = True,
+                 *args, **kwargs):
         """
         :param creature_cls_or_operation_space: class of a creature to be controlled by the agent. Use to automatically get
         observation and action spaces. Alternatively, tuple[int, int] can be given with manually set
@@ -297,19 +307,18 @@ class EvolBaseClass(Agent, Observable):
         :param learning_enabled - default True. Allows agent to learn. Set to False to disable learning and
         decrease computation time
         """
-        Observable.__init__(self, creature_cls_or_operation_space)
-
+        Observable.__init__(self, creature_cls_or_operation_space=creature_cls_or_operation_space)
         self.learning_enabled: bool = learning_enabled
         self.sum_reward: int = 0
         self.sum_steps: int = 0
 
-    def _compute_reward(self, old_obs, new_obs, action, metadata: dict=None) -> float:
+    def _compute_reward(self, old_obs, new_obs, action, metadata: dict = None) -> float:
         """ Computes a reward for a given state"""
         if metadata is None:
             metadata = {}
         pass
 
-    def learn(self, old_obs, new_obs, action, metadata: dict=None):
+    def learn(self, old_obs, new_obs, action, metadata: dict = None):
         if not self.learning_enabled:
             return
         if metadata is None:

@@ -1,43 +1,82 @@
+import multiprocessing
+import os
+import pickle
+
+import neat
+import creatures
+from terrain import Terrain
+from agents import agents
+
+
+def eval_genome(genome, config):
+    """
+    Evaluate a single genome.
+    """
+    net = neat.nn.FeedForwardNetwork.create(genome, config)
+    neat_cow_agent = agents.NeatCow(net)
+
+    # following creatures will be monitored in the world and respawn if their count is lower that the threshold
+    creatures_to_respawn = (
+        (creatures.Cow, neat_cow_agent, 6),
+    )
+
+    world = Terrain((15, 15),
+                    verbose=0,
+                    generation_method='consistent_random',  # see other options in the description
+                    steps_to_reset_world=10_000,
+                    creatures_to_respawn=creatures_to_respawn,
+                    )
+
+    MAX_STEPS = 1_000
+    for _ in range(MAX_STEPS):
+        world.step()
+
+    #print("Reward: ", neat_cow_agent.sum_reward)
+    return neat_cow_agent.sum_reward
+
+
+
+def train_neat_cow():
+    """Run NEAT to evolve a controller for cow."""
+
+    local_dir = os.path.dirname(__file__)
+    config_path = os.path.join(local_dir, 'agents', "config_neat_cow")
+
+    # Load configuration.
+    config = neat.Config(
+        neat.DefaultGenome,
+        neat.DefaultReproduction,
+        neat.DefaultSpeciesSet,
+        neat.DefaultStagnation,
+        config_path,
+    )
+
+    # Create the population, which is the top-level object for a NEAT run.
+    p = neat.Population(config)
+
+    # Add a stdout reporter to show progress in the terminal.
+    p.add_reporter(neat.StdOutReporter(True))
+    stats = neat.StatisticsReporter()
+    p.add_reporter(stats)
+    # Periodic checkpoints, similar to other examples.
+    p.add_reporter(neat.Checkpointer(100))
+
+    # Use parallel evaluation across available CPU cores.
+    pe = neat.ParallelEvaluator(multiprocessing.cpu_count(), eval_genome)
+
+    # Run until solution or fitness threshold is reached (see config).
+    winner = p.run(pe.evaluate, 300)
+
+    # Display the winning genome.
+    print(f"\nBest genome:\n{winner!s}")
+
+    # Save the winner for later reuse in test-feedforward.py.
+    with open("winner-feedforward.pickle", "wb") as f:
+        pickle.dump(winner, f)
+
+    return winner, stats
 
 
 if __name__ == '__main__':
-    # Import necessary modules
-    from tensorneat.pipeline import Pipeline
-    from tensorneat.algorithm.neat import NEAT
-    from tensorneat.genome import DefaultGenome, BiasNode
-    from tensorneat.problem.rl import BraxEnv
-    from tensorneat.common import ACT, AGG
 
-    # Define the pipeline
-    pipeline = Pipeline(
-        algorithm=NEAT(
-            pop_size=1000,
-            species_size=20,
-            survival_threshold=0.1,
-            compatibility_threshold=1.0,
-            genome=DefaultGenome(
-                num_inputs=11,
-                num_outputs=3,
-                init_hidden_layers=(),
-                node_gene=BiasNode(
-                    activation_options=ACT.tanh,
-                    aggregation_options=AGG.sum,
-                ),
-                output_transform=ACT.tanh,
-            ),
-        ),
-        problem=BraxEnv(
-            env_name="hopper",
-            max_step=1000,
-        ),
-        seed=42,
-        generation_limit=100,
-        fitness_target=5000,
-        show_problem_details=True
-    )
-
-    # Initialize state
-    state = pipeline.setup()
-
-    # Run until termination
-    state, best = pipeline.auto_run(state)
+    train_neat_cow()

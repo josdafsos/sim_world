@@ -13,19 +13,22 @@ class Graphics:
 
     def __init__(self):
         # --- Initialize pygame ---
+        self.screen = None
         pygame.init()
-        WIDTH, HEIGHT = 600, 600
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        pygame.display.set_caption("Sim world")
+        self.WIDTH, self.HEIGHT = 600, 600  # window size
+
 
         # --- Other ---
         self.textures = {}
-
 
     def get_screen(self) -> pygame.Surface:
         """
         :return: screen instance on which visualization happens
         """
+        if self.screen is None:
+            self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
+            pygame.display.set_caption("Sim world")
+
         return self.screen
 
     def get_texture(self, texture_path: str):
