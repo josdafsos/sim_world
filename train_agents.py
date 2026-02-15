@@ -27,13 +27,12 @@ def eval_genome(genome, config):
                     creatures_to_respawn=creatures_to_respawn,
                     )
 
-    MAX_STEPS = 1_000
+    MAX_STEPS = 1_000  # server = 10_000
     for _ in range(MAX_STEPS):
         world.step()
 
     #print("Reward: ", neat_cow_agent.sum_reward)
     return neat_cow_agent.sum_reward
-
 
 
 def train_neat_cow():
@@ -48,7 +47,7 @@ def train_neat_cow():
         neat.DefaultReproduction,
         neat.DefaultSpeciesSet,
         neat.DefaultStagnation,
-        config_path,
+        agents.NeatCow.CONFIG_PATH,
     )
 
     # Create the population, which is the top-level object for a NEAT run.
@@ -58,20 +57,21 @@ def train_neat_cow():
     p.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
+    save_prefix = os.path.join(agents.NeatCow.SAVE_PATH, 'neat-checkpoint-' + agents.NeatCow.AGENT_NAME + '-')
     # Periodic checkpoints, similar to other examples.
-    p.add_reporter(neat.Checkpointer(100))
+    p.add_reporter(neat.Checkpointer(generation_interval=50, filename_prefix=save_prefix))
 
     # Use parallel evaluation across available CPU cores.
     pe = neat.ParallelEvaluator(multiprocessing.cpu_count(), eval_genome)
 
     # Run until solution or fitness threshold is reached (see config).
-    winner = p.run(pe.evaluate, 300)
+    winner = p.run(pe.evaluate, 500)
 
     # Display the winning genome.
     print(f"\nBest genome:\n{winner!s}")
 
     # Save the winner for later reuse in test-feedforward.py.
-    with open("winner-feedforward.pickle", "wb") as f:
+    with open(os.path.join(agents.NeatCow.SAVE_PATH, agents.NeatCow.AGENT_NAME + "winner-feedforward.pickle"), "wb") as f:
         pickle.dump(winner, f)
 
     return winner, stats

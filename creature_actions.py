@@ -185,7 +185,7 @@ class Split(Action):
 
         if other_creature is None:
             if self.creature.species_cnt > 1:
-                self.creature.current_food -= 0.05  # subtracted from both creatures
+                self.creature.consume_food(0.05)  # subtracted from both creatures
                 self.creature.movement_points -= 1.0
 
                 new_creature = self.creature.__class__(self.creature._agent,
@@ -203,7 +203,7 @@ class Split(Action):
                                          self.creature.tile.in_map_position[1] + relative_tile_pos[1])
                 self.creature.world.add_creature(new_creature, new_creature_position)
             else:
-                self.creature.current_food -= 0.05
+                self.creature.consume_food(0.05)
                 self.creature.movement_points -= 0.1
         else:
             action_attack(self.creature, other_creature)  # attack already consumes food and movement

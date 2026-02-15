@@ -209,6 +209,12 @@ class Creature:
         has_done_action = False
 
         while self.species_cnt > 0 and self.days_since_death < 1:
+            if self.species_cnt < 1 or self.days_since_death > 0:
+                if self.verbose > 0:
+                    print("dead creature tried to an action.")
+                self.apply_damage(1000)
+                break
+
             action_idx = self._agent.predict(self.observation)
             action, action_option_number = self._action_mapping_tuple[action_idx]
             if self.verbose > 0:
@@ -221,10 +227,7 @@ class Creature:
             self._agent.learn(old_obs, new_obs, np.array((action_idx,)), self._obs_metadata_dict)
             self.species_cnt_change = 0  # restoring the indication of death/birth
             has_done_action = True
-            if self.species_cnt < 1 or self.days_since_death > 0:
-                warnings.warn("dead creature was in the middle of making an action, interrupting...")
-                self.apply_damage(1000)
-                break
+
 
             if self.movement_points < 1e-4 or is_final_action:
                 break

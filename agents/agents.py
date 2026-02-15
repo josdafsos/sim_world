@@ -1,10 +1,13 @@
 """ Module containing agents implementations """
 
 import random
+import math
+import neat
+import os
+import pickle
 
 from agents.base_agents import Agent, DQNBaseClass, MemoryFrameStack, EvolBaseClass
 import creatures
-import math
 
 
 class RandomCow(Agent):
@@ -105,9 +108,48 @@ class DQNMemoryWolf(MemoryFrameStack, DQNBaseClass):
 
 class NeatCow(EvolBaseClass):
 
-    def __init__(self, model):
+    CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config_neat_cow")
+    SAVE_PATH = os.path.join(os.path.dirname(__file__), 'saved_agents')
+    AGENT_NAME = "NEAT_Cow"
+
+    @staticmethod
+    def load_model(model_name: str):
+        """
+        Function returns neat network, otherwise returns None
+        """
+        save_name = os.path.join(NeatCow.SAVE_PATH, model_name)
+        config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                             neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                             NeatCow.CONFIG_PATH)
+
+        if 'checkpoint' in model_name:  # Restoring model from checkpoint
+            pop = neat.Checkpointer.restore_checkpoint(save_name)
+            valid_genomes = [
+                g for g in pop.population.values()
+                if g.fitness is not None
+            ]
+            best_genome = max(valid_genomes, key=lambda g: g.fitness)
+            net = neat.nn.FeedForwardNetwork.create(best_genome, config)
+            return net
+
+        with open(save_name, 'rb') as f:
+                winner = pickle.load(f)
+        # print(winner)
+        net = neat.nn.FeedForwardNetwork.create(winner, config)
+        return net
+
+    def __init__(self, model=None, model_name: str | None = None):
+        """
+        :param model - processed neat network. If None, model will be loaded from model_name param
+        :param model_name - Name of the model in the save folder, without specified path
+        """
         super().__init__(creature_cls_or_operation_space=creatures.Cow)
-        self.model = model
+        if model_name is not  None:
+            self.model = NeatCow.load_model(model_name)
+        elif model is not None:
+            self.model = model
+        else:
+            raise "Error loading Neat agent. Both model and model_path are not given. At least one parameter must be not None"
 
     def _compute_reward(self, old_obs, new_obs, action, metadata={}):
         extra_penalty = 0

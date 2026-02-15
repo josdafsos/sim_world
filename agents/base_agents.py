@@ -293,7 +293,7 @@ class DQNBaseClass(Agent, Observable):
 class EvolBaseClass(Agent, Observable):
     """ Base class for all Evolutionary agents """
 
-    AGENT_NAME = "NEATBaseClass"
+    AGENT_NAME = "EvolBaseClass"
     AGENT_SAVING_FREQUENCY = 1_000_000
 
     def __init__(self,
