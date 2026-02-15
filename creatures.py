@@ -41,7 +41,8 @@ class Cow(Creature):
                  self_tile=None,
                  texture: str | tuple[int, int, int] = "cow_t.png",  #(255, 50, 50),
                  verbose: int = 0,
-                 creature_to_copy=None):
+                 creature_to_copy=None,
+                 *args, **kwargs):
 
         super().__init__(agent,
                          self_tile,
@@ -116,7 +117,8 @@ class Wolf(Creature):
                  self_tile=None,
                  texture: str | tuple[int, int, int] = "wolf_t.png",  #(255, 50, 50),
                  verbose: int = 0,
-                 creature_to_copy=None):
+                 creature_to_copy=None,
+                 *args, **kwargs):
 
         super().__init__(agent,
                          self_tile,

@@ -140,8 +140,11 @@ class Move(Action):
         other_creature = self.creature.world.get_creature_on_tile(new_tile)
         if other_creature is None:
             self.creature.tile = new_tile  # don't use set_tile function here because it will update obs twice and do unnecessary rescale
+            # TODO is it actually correct that observations must not be updated here?
             self.creature.movement_points = max(0.0, self.creature.movement_points - required_movement)
             self.creature.consume_food(required_movement / 20.0)
+            if self.creature.verbose > 0:
+                print(f"moving to empty tile")
         else:
 
             if other_creature.CREATURE_ID == self.creature.CREATURE_ID:
@@ -151,13 +154,19 @@ class Move(Action):
                 if self.creature.species_cnt + other_creature.species_cnt <= self.creature.MAX_SPECIES_CNT:  # creatures fully merge
                     other_creature.species_cnt += self.creature.species_cnt
                     self.creature.movement_points = 0.0  # to block any further action
-                    self.creature.world.remove_creature(self)
+                    self.creature.world.remove_creature(self.creature)
+                    if self.creature.verbose > 0:
+                        print(f"moving to occupied tile, and fully merging with existing creature")
+
+                    return True
                 else:
                     remaining_species = self.creature.species_cnt + other_creature.species_cnt - self.creature.MAX_SPECIES_CNT
                     other_creature.species_cnt = self.creature.MAX_SPECIES_CNT
                     self.creature.species_cnt = remaining_species
                     self.creature.consume_food(0.05)
                     self.creature.movement_points -= 0.5
+                    if self.creature.verbose > 0:
+                        print(f"moving to occupied tile, and partially merging with existing creature")
             else:
                 action_attack(self.creature, other_creature)  # attack already consumes food and movement
 
@@ -202,6 +211,8 @@ class Split(Action):
                 new_creature_position = (self.creature.tile.in_map_position[0] + relative_tile_pos[0],
                                          self.creature.tile.in_map_position[1] + relative_tile_pos[1])
                 self.creature.world.add_creature(new_creature, new_creature_position)
+                if self.creature.verbose > 1:
+                    print(f"split into empy tile at {relative_tile_pos}, creatures staying in place: {remaining_species_cnt}, creatures moved: {moved_species_cnt}")
             else:
                 self.creature.consume_food(0.05)
                 self.creature.movement_points -= 0.1

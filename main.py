@@ -39,20 +39,22 @@ if __name__ == '__main__':
     # following creatures will be monitored in the world and respawn if their count is lower that the threshold
     creatures_to_respawn = (
         #(creatures.Cow, random_cow_agent, 6),
-        (creatures.Cow, neat_cow_agent, 6),
+        #(creatures.Cow, neat_cow_agent, 6, {'verbose': 2}),
         # (creatures.Wolf, memory_wolf_agent, 6),
     )
 
 
     world = terrain.Terrain((15, 15),
                             screen=screen,
-                            verbose=0,
+                            verbose=1,
                             generation_method='consistent_random',  # see other options in the description
                             steps_to_reset_world=100_000,
                             creatures_to_respawn=creatures_to_respawn,
                             )
     world.camera_fit_view()
     # world.multiple_steps(100)
+
+    world.add_creature(creatures.Cow(neat_cow_agent, texture="cow_t.png", verbose=2))
     # world.add_creature(creatures.Cow(cow_agent, texture="cow_t.png", verbose=0))
     # world.add_creature(creatures.Wolf(memory_wolf_agent, texture="wolf_t.png", verbose=0))
 

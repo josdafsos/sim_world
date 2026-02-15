@@ -56,7 +56,8 @@ class Terrain:
         if the current creatures number is lower than the given integer, then additional creatures will be spawned
         with a given agent.
         Can be None, then nothing will be spawned.
-        Can be tuple of tuples of (Creature Class, agent instance, minimum count of creatures in the world)
+        Can be tuple of tuples of (Creature Class, agent instance, minimum count of creatures in the world,
+        {kwargs for creature initialization})
         """
 
         # --- visual settings ---
@@ -168,7 +169,7 @@ class Terrain:
             for spawn_creature in self.creatures_to_respawn:
                 if (spawn_creature[0].TYPE not in creatures_cnt_dict or
                         creatures_cnt_dict[spawn_creature[0].TYPE] < spawn_creature[2]):
-                    self.add_creature(spawn_creature[0](spawn_creature[1]))
+                    self.add_creature(spawn_creature[0](spawn_creature[1], kwargs=spawn_creature[3]))
 
     def add_creature(self, creature: Creature, position: None | tuple[int, int] = None) -> None:
         """
@@ -378,6 +379,8 @@ class Terrain:
                 print(f"creature deleted, total creature count: {len(self.creatures)}")
             return True
         else:
+            if self.verbose > 0:
+                print(f"Attempted to remove a creature that does not exist in the world, creature: {creature}")
             return False
 
     def _get_surrounding_tiles(self, row: int, col: int, tile_map: list[list[...]], search_diameter=3) -> list[list[...]]:

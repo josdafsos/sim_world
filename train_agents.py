@@ -38,9 +38,6 @@ def eval_genome(genome, config):
 def train_neat_cow():
     """Run NEAT to evolve a controller for cow."""
 
-    local_dir = os.path.dirname(__file__)
-    config_path = os.path.join(local_dir, 'agents', "config_neat_cow")
-
     # Load configuration.
     config = neat.Config(
         neat.DefaultGenome,
