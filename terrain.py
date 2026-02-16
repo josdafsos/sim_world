@@ -380,7 +380,7 @@ class Terrain:
             return True
         else:
             if self.verbose > 0:
-                print(f"Attempted to remove a creature that does not exist in the world, creature: {creature}")
+                warnings.warn(f"Attempted to remove a creature that does not exist in the world, creature: {creature}")
             return False
 
     def _get_surrounding_tiles(self, row: int, col: int, tile_map: list[list[...]], search_diameter=3) -> list[list[...]]:

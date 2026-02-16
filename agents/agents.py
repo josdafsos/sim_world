@@ -109,7 +109,7 @@ class DQNMemoryWolf(MemoryFrameStack, DQNBaseClass):
 class NeatCow(EvolBaseClass):
 
     CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config_neat_cow")
-    SAVE_PATH = os.path.join(os.path.dirname(__file__), 'saved_agents')
+    SAVE_PATH = os.path.join(os.path.dirname(__file__), 'neat_agents')
     AGENT_NAME = "NEAT_Cow"
 
     @staticmethod

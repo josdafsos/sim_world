@@ -17,7 +17,7 @@ def eval_genome(genome, config):
 
     # following creatures will be monitored in the world and respawn if their count is lower that the threshold
     creatures_to_respawn = (
-        (creatures.Cow, neat_cow_agent, 6),
+        (creatures.Cow, neat_cow_agent, 6, {}),
     )
 
     world = Terrain((15, 15),
@@ -27,7 +27,7 @@ def eval_genome(genome, config):
                     creatures_to_respawn=creatures_to_respawn,
                     )
 
-    MAX_STEPS = 1_000  # server = 10_000
+    MAX_STEPS = 1_000  # server = 4_000
     for _ in range(MAX_STEPS):
         world.step()
 
@@ -56,7 +56,7 @@ def train_neat_cow():
     p.add_reporter(stats)
     save_prefix = os.path.join(agents.NeatCow.SAVE_PATH, 'neat-checkpoint-' + agents.NeatCow.AGENT_NAME + '-')
     # Periodic checkpoints, similar to other examples.
-    p.add_reporter(neat.Checkpointer(generation_interval=50, filename_prefix=save_prefix))
+    p.add_reporter(neat.Checkpointer(generation_interval=2, filename_prefix=save_prefix))
 
     # Use parallel evaluation across available CPU cores.
     pe = neat.ParallelEvaluator(multiprocessing.cpu_count(), eval_genome)
@@ -68,7 +68,7 @@ def train_neat_cow():
     print(f"\nBest genome:\n{winner!s}")
 
     # Save the winner for later reuse in test-feedforward.py.
-    with open(os.path.join(agents.NeatCow.SAVE_PATH, agents.NeatCow.AGENT_NAME + "winner-feedforward.pickle"), "wb") as f:
+    with open(os.path.join(agents.NeatCow.SAVE_PATH, agents.NeatCow.AGENT_NAME + "-winner.pickle"), "wb") as f:
         pickle.dump(winner, f)
 
     return winner, stats
