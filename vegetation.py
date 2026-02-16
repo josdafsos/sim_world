@@ -3,7 +3,7 @@ import pygame
 import numpy as np
 
 from graphics import graphics
-
+import _world_logic
 
 # IDEA evolution of vegetation if a plant is put into certain conditions
 # i.e. grass can evolve into lili plant if submerged into water
@@ -60,6 +60,9 @@ class Vegetation:
         col_indices = (np.arange(tile_y - self.MOISTURE_SEARCH_RADIUS, tile_y + self.MOISTURE_SEARCH_RADIUS + 1) % H)
         # mat of tile indexes to compute surrounding moisture level
         self.moisutre_tile_idx = np.ix_(row_indices, col_indices)
+        self.moisture_tile_mask = np.zeros(self.tile.world.map_size, dtype=bool)
+        self.moisture_tile_mask[self.moisutre_tile_idx] = True
+
         self.moisture_buffer_value: float = 0.0  # stores moisture value computed during previous step
 
         # --- visual properties ---
@@ -109,14 +112,16 @@ class Vegetation:
             if self._check_same_group_exist(tile):  # blocking growth of same vegetation group on the same tile
                 return
             tile.vegetation_dict[self.TYPE] = self.__class__(tile, texture=self.texture, must_be_planted=False)
-        if tile.vegetation_dict[self.TYPE].size < 0:
-            tile.vegetation_dict[self.TYPE].size = self.MIN_NEW_PLANT_SIZE + random.random() * 0.5
+        vegetation = tile.vegetation_dict[self.TYPE]
+
+        if vegetation.size < 0:
+            vegetation.size = self.MIN_NEW_PLANT_SIZE + random.random() * 0.5
         if growing_power < 0:  # growing randomly
-            new_plants_cnt = min(self.MAX_CNT - tile.vegetation_dict[self.TYPE].count, 1 + random.randint(1, self.MAX_CNT))
+            new_plants_cnt = min(self.MAX_CNT - vegetation.count, 1 + random.randint(1, self.MAX_CNT))
         else:
-            new_plants_cnt = min(self.MAX_CNT - tile.vegetation_dict[self.TYPE].count,
+            new_plants_cnt = min(self.MAX_CNT - vegetation.count,
                                  1 + int(random.random() * 0.1 * growing_power))
-        tile.vegetation_dict[self.TYPE].count += new_plants_cnt
+        vegetation.count += new_plants_cnt
 
     def _delete_plant(self):
         """
@@ -137,23 +142,35 @@ class Vegetation:
                 self._delete_plant()
 
     def _compute_plant_growth(self):
-        # TODO very time-consuming function, same for cactus growth function
+        # TODO quite time-consuming function, same for cactus growth function
         """
         Function to compute growth/decay of plant on a tile during simulation step.
         Can be redefined to obtain other plant growing behaviour.
         """
 
         tile_x, tile_y = self.tile.in_map_position
-        total_moisture = np.sum(self.tile.world.pad_moisture_level_mat[self.moisutre_tile_idx])
+        #total_moisture = np.sum(self.tile.world.pad_moisture_level_mat[self.moisutre_tile_idx])  # old inefficient computation
+        total_moisture = self.tile.world.moisture_level_mat[self.moisture_tile_mask].sum()  # still could be somehow optimized
+
         self.moisture_buffer_value = total_moisture
 
-        if self.tile.world.water_relative_height[tile_x, tile_y] > 1e-4:  # plant is dying due to high water level
-            self.size *= 1 - 0.05 - random.random() * 0.2
-        elif total_moisture < self.MIN_MOISTURE_REQUIRED or random.random() < self.RANDOM_DECAY_PROBABILITY:
-            self.size *= 1 - 0.01 - random.random() * 0.05 - 0.01 * (1 - self.tile.nutrition)
-        else:
-            self.size *= 1 + 0.01 + random.random() * 0.1 * self.tile.nutrition
-        self.size = min(self.size, 1)
+        # C call implementation
+        self.size = _world_logic.compute_plant_growth_grass(self.size,
+                                                self.tile.world.water_relative_height[tile_x, tile_y],
+                                                total_moisture,
+                                                self.MIN_MOISTURE_REQUIRED,
+                                                self.RANDOM_DECAY_PROBABILITY,
+                                                self.tile.nutrition
+                                                )
+
+        # # old function implementation
+        # if self.tile.world.water_relative_height[tile_x, tile_y] > 1e-4:  # plant is dying due to high water level
+        #     self.size *= 1 - 0.05 - random.random() * 0.2
+        # elif total_moisture < self.MIN_MOISTURE_REQUIRED or random.random() < self.RANDOM_DECAY_PROBABILITY:
+        #     self.size *= 1 - 0.01 - random.random() * 0.05 - 0.01 * (1 - self.tile.nutrition)
+        # else:
+        #     self.size *= 1 + 0.01 + random.random() * 0.1 * self.tile.nutrition
+        # self.size = min(self.size, 1)
 
     def prepare_step_vegetation(self):
 
@@ -166,8 +183,8 @@ class Vegetation:
         # TODO too many random calls, the function can be optimized if amount of random calls is reduced
         planting_probability = self.PLANTING_PROBABILITY_COEFF * growth_power / (self.MAX_CNT * len(surround_tiles))
         for tile in surround_tiles:
-            if (planting_probability > random.random() and
-                    tile.world.water_relative_height[tile.in_map_position] < 1e-5):  # no planting in water, old: tile.water.relative_height < 1e-5
+            if (tile.world.water_relative_height[tile.in_map_position] < 1e-5 and
+                    planting_probability > random.random()):  # no planting in water, old: tile.water.relative_height < 1e-5
                 self.plant(tile)
 
         self._evolve()
@@ -221,7 +238,7 @@ class Cactus(Vegetation):
         Function to compute growth/decay of plant on a tile during simulation step.
         Can be redefined to obtain other plant growing behaviour.
         """
-
+        # TODO this is a time consuming function that should be optimized
         tile_x, tile_y = self.tile.in_map_position
         total_moisture = np.sum(self.tile.world.pad_moisture_level_mat[self.moisutre_tile_idx])
         self.moisture_buffer_value = total_moisture

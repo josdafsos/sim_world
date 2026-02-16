@@ -9,6 +9,7 @@ from graphics import graphics
 import cProfile
 import pstats
 import pygame
+import _world_logic
 
 
 # main priority TODO list
@@ -23,17 +24,17 @@ import pygame
 if __name__ == '__main__':
 
     # --- Debug flags ----
-    count_execution_time = False  # if True when program is finished, highlights of longest functions sent to console
+    count_execution_time = True  # if True when program is finished, highlights of longest functions sent to console
 
     if count_execution_time:
         print("Debug option enabled: count_execution_time")
 
     screen = graphics.get_screen()
     random_cow_agent = agents.RandomCow()
-    dqn_cow_agent = agents.DQNCow(verbose=1,
+    dqn_cow_agent = agents.DQNCow(verbose=0,
                                   epsilon=(1.0, 0.075, int(2e6)),
                                   agent_version="new_agent")
-    neat_cow_agent= agents.NeatCow(model_name='neat-checkpoint-NEAT_Cow-2')
+    neat_cow_agent= agents.NeatCow(model_name='neat-checkpoint-NEAT_Cow-50')
     # memory_wolf_agent = agents.DQNMemoryWolf(verbose=1)
 
     # following creatures will be monitored in the world and respawn if their count is lower that the threshold
@@ -43,12 +44,11 @@ if __name__ == '__main__':
         # (creatures.Wolf, memory_wolf_agent, 6),
     )
 
-
-    world = terrain.Terrain((13, 13),
+    world = terrain.Terrain((10, 10),
                             screen=screen,
-                            verbose=1,
+                            verbose=0,
                             generation_method='consistent_random',  # see other options in the description
-                            steps_to_reset_world=100_000,
+                            steps_to_reset_world=1_000,
                             creatures_to_respawn=creatures_to_respawn,
                             )
     world.camera_fit_view()
