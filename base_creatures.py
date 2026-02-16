@@ -183,6 +183,8 @@ class Creature:
                 and self.current_food > 0.75 * self.MAX_FOOD_SUPPLY
                 and random.random() < self.CHANCE_OF_BIRTH * self.species_cnt):
             newborn_creatures = 1
+            if self.verbose > 0:
+                print("a newborn obtained")
         self.species_cnt += newborn_creatures
         self.species_cnt_change += newborn_creatures
 

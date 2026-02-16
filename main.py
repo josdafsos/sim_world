@@ -33,7 +33,7 @@ if __name__ == '__main__':
     dqn_cow_agent = agents.DQNCow(verbose=1,
                                   epsilon=(1.0, 0.075, int(2e6)),
                                   agent_version="new_agent")
-    neat_cow_agent= agents.NeatCow(model_name='NEAT_Cow-winner.pickle')
+    neat_cow_agent= agents.NeatCow(model_name='neat-checkpoint-NEAT_Cow-2')
     # memory_wolf_agent = agents.DQNMemoryWolf(verbose=1)
 
     # following creatures will be monitored in the world and respawn if their count is lower that the threshold
