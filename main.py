@@ -40,6 +40,7 @@ if __name__ == '__main__':
     # following creatures will be monitored in the world and respawn if their count is lower that the threshold
     creatures_to_respawn = (
         #(creatures.Cow, random_cow_agent, 6),
+        #(creatures.Cow, neat_cow_agent, 6, {'verbose': 2}),
         (creatures.Cow, neat_cow_agent, 6, {}),
         # (creatures.Wolf, memory_wolf_agent, 6),
     )

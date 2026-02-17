@@ -164,5 +164,5 @@ class NeatCow(EvolBaseClass):
     def predict(self, obs) -> int:
         action = self.model.activate(obs)[0]
         # single output continuous action is mapped to integer value
-        return round(self.action_space * (math.atan(action) + math.pi/2) / math.pi) - 1
+        return round((self.action_space - 1) * (math.tanh(action*2) + 1) / 2)
 

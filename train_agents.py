@@ -20,7 +20,7 @@ def eval_genome(genome, config):
         (creatures.Cow, neat_cow_agent, 6, {}),
     )
 
-    world = Terrain((13, 13),
+    world = Terrain((10, 10 ),
                     verbose=0,
                     generation_method='consistent_random',  # see other options in the description
                     steps_to_reset_world=10_000,

@@ -101,7 +101,7 @@ class Terrain:
         # --- monitoring options ----
         self.reset_on_dead_world: bool = reset_on_dead_world  # flag to check if a "dead" world must be restarted
         self.steps_to_reset_world: int = steps_to_reset_world
-        self.creatures_to_respawn: tuple[tuple[Creature, Agent, int], ...] | None = creatures_to_respawn
+        self.creatures_to_respawn: tuple[tuple[Creature, Agent, int, dict], ...] | None = creatures_to_respawn
         self.MONITORING_PERIOD: int = 10  # the interval of simulation steps at which monitoring occurs (checking for dead world and respawning creatures)
 
         self.reset()
@@ -169,7 +169,7 @@ class Terrain:
             for spawn_creature in self.creatures_to_respawn:
                 if (spawn_creature[0].TYPE not in creatures_cnt_dict or
                         creatures_cnt_dict[spawn_creature[0].TYPE] < spawn_creature[2]):
-                    self.add_creature(spawn_creature[0](spawn_creature[1], kwargs=spawn_creature[3]))
+                    self.add_creature(spawn_creature[0](spawn_creature[1], **spawn_creature[3]))
 
     def add_creature(self, creature: Creature, position: None | tuple[int, int] = None) -> None:
         """

@@ -240,7 +240,8 @@ class Cactus(Vegetation):
         """
         # TODO this is a time consuming function that should be optimized
         tile_x, tile_y = self.tile.in_map_position
-        total_moisture = np.sum(self.tile.world.pad_moisture_level_mat[self.moisutre_tile_idx])
+        total_moisture = self.tile.world.moisture_level_mat[
+            self.moisture_tile_mask].sum()  # still could be somehow optimized
         self.moisture_buffer_value = total_moisture
 
         has_neighbour_cactus = self._has_neighbouring_cactus()  # neighbouring cactuses kill each other
