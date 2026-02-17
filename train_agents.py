@@ -35,8 +35,11 @@ def eval_genome(genome, config):
     return neat_cow_agent.sum_reward
 
 
-def train_neat_cow():
-    """Run NEAT to evolve a controller for cow."""
+def train_neat_cow(checkpoint_name: str | None = None):
+    """
+    Run NEAT to evolve a controller for cow.
+    :param checkpoint_name if given, the training will be continued from the checkpoint
+    """
 
     # Load configuration.
     config = neat.Config(
@@ -48,7 +51,12 @@ def train_neat_cow():
     )
 
     # Create the population, which is the top-level object for a NEAT run.
-    p = neat.Population(config)
+    if checkpoint_name is None:
+        p = neat.Population(config)
+        print('---- Training of completely new population has started ----')
+    else:
+        p = neat.Checkpointer.restore_checkpoint(os.path.join(agents.NeatCow.SAVE_PATH, checkpoint_name))
+        print('---- Training continued from checkpoint ----')
 
     # Add a stdout reporter to show progress in the terminal.
     p.add_reporter(neat.StdOutReporter(True))
@@ -76,4 +84,4 @@ def train_neat_cow():
 
 if __name__ == '__main__':
 
-    train_neat_cow()
+    train_neat_cow(checkpoint_name='neat-checkpoint-NEAT_Cow-10')
