@@ -16,37 +16,37 @@ initial_connection      = partial_direct 0.5
 feed_forward            = True
 compatibility_disjoint_coefficient    = 1.0
 compatibility_weight_coefficient      = 0.6
-conn_add_prob           = 0.025
-conn_delete_prob        = 0.0255
-node_add_prob           = 0.025
-node_delete_prob        = 0.0255
+conn_add_prob           = 0.125
+conn_delete_prob        = 0.1255
+node_add_prob           = 0.125
+node_delete_prob        = 0.1255
 activation_default      = tanh
 activation_options      = tanh sigmoid relu
-activation_mutate_rate  = 0.005
+activation_mutate_rate  = 0.025
 aggregation_default     = sum
 aggregation_options     = sum
 aggregation_mutate_rate = 0.05
 bias_init_mean          = 0.0
 bias_init_stdev         = 1.0
-bias_replace_rate       = 0.025
-bias_mutate_rate        = 0.05
+bias_replace_rate       = 0.125
+bias_mutate_rate        = 0.15
 bias_mutate_power       = 0.5
-bias_max_value          = 100.0
-bias_min_value          = -100.0
+bias_max_value          = 30.0
+bias_min_value          = -30.0
 response_init_mean      = 1.0
 response_init_stdev     = 0.1
-response_replace_rate   = 0.013
-response_mutate_rate    = 0.016
+response_replace_rate   = 0.113
+response_mutate_rate    = 0.116
 response_mutate_power   = 0.02
-response_max_value      = 100.0
-response_min_value      = -100.0
+response_max_value      = 30.0
+response_min_value      = -30.0
 
-weight_max_value        = 100
-weight_min_value        = -100
+weight_max_value        = 30
+weight_min_value        = -30
 weight_init_mean        = 0.0
 weight_init_stdev       = 1.0
-weight_mutate_rate      = 0.025
-weight_replace_rate     = 0.025
+weight_mutate_rate      = 0.125
+weight_replace_rate     = 0.125
 weight_mutate_power     = 0.5
 enabled_default         = True
 enabled_mutate_rate     = 0.10
@@ -60,11 +60,11 @@ enabled_rate_to_true_add       = 0.0
 enabled_rate_to_false_add      = 0.0
 
 [DefaultSpeciesSet]
-compatibility_threshold = 3.0
+compatibility_threshold = 2.5
 
 [DefaultStagnation]
 species_fitness_func = max
-max_stagnation       = 80
+max_stagnation       = 10
 species_elitism      = 2
 
 [DefaultReproduction]

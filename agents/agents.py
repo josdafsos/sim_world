@@ -21,7 +21,7 @@ class RandomCow(Agent):
         action = random.randint(0, self.action_space - 1)
         return action
 
-    def learn(self, old_obs, new_obs, action) -> None:
+    def learn(self, old_obs, new_obs, action, metadata) -> None:
         """ It never learns anything"""
         pass
 
@@ -154,9 +154,11 @@ class NeatCow(EvolBaseClass):
     def _compute_reward(self, old_obs, new_obs, action, metadata={}):
         extra_penalty = 0
         extra_bonus = 0
+        if metadata["species_cnt_change"] > 0:
+            extra_bonus += 2
         # extra_bonus += 5 * int(new_obs[4] > 2)  # extra reward for staying together
         # extra_penalty += 1 * int(new_obs[4] < 0.2)  # small penalty for walking alone to avoid unnecessary splits,
-        extra_penalty += 1 * int(metadata["species_cnt"] < 1)  # if zero creatures left, it is dead and extra penalty for it
+        extra_penalty += 2 * int(metadata["species_cnt"] < 1)  # if zero creatures left, it is dead and extra penalty for it
         reward = metadata["species_cnt_change"] - extra_penalty + extra_bonus  # species_cnt_change value
 
         return reward
@@ -164,5 +166,7 @@ class NeatCow(EvolBaseClass):
     def predict(self, obs) -> int:
         action = self.model.activate(obs)[0]
         # single output continuous action is mapped to integer value
-        return round((self.action_space - 1) * (math.tanh(action*2) + 1) / 2)
+        action_idx = round((self.action_space - 1) * (math.tanh(action*2) + 1) / 2)
+        print(f"idx: {action_idx}")
+        return action_idx
 

@@ -1,6 +1,7 @@
 import random
 import pygame
 import numpy as np
+from numba import njit
 
 from graphics import graphics
 import _world_logic
@@ -8,6 +9,12 @@ import _world_logic
 # IDEA evolution of vegetation if a plant is put into certain conditions
 # i.e. grass can evolve into lili plant if submerged into water
 
+@njit
+def fast_sum(A, rows, cols):
+    s = 0.0
+    for i in range(len(rows)):
+        s += A[rows[i], cols[i]]
+    return s
 
 class Vegetation:
     """
@@ -56,10 +63,11 @@ class Vegetation:
         tile_x, tile_y = self.tile.in_map_position
         # right now only wrapped world is considered.
         # To consider other topologies compliment row and col variable definition
-        row_indices = (np.arange(tile_x - self.MOISTURE_SEARCH_RADIUS, tile_x + self.MOISTURE_SEARCH_RADIUS + 1) % W)
-        col_indices = (np.arange(tile_y - self.MOISTURE_SEARCH_RADIUS, tile_y + self.MOISTURE_SEARCH_RADIUS + 1) % H)
+        self.moisture_row_indices = (np.arange(tile_x - self.MOISTURE_SEARCH_RADIUS, tile_x + self.MOISTURE_SEARCH_RADIUS + 1) % W)
+        self.moisture_col_indices = (np.arange(tile_y - self.MOISTURE_SEARCH_RADIUS, tile_y + self.MOISTURE_SEARCH_RADIUS + 1) % H)
         # mat of tile indexes to compute surrounding moisture level
-        self.moisutre_tile_idx = np.ix_(row_indices, col_indices)
+        self.moisutre_tile_idx = np.ix_(self.moisture_row_indices, self.moisture_col_indices)
+
         self.moisture_tile_mask = np.zeros(self.tile.world.map_size, dtype=bool)
         self.moisture_tile_mask[self.moisutre_tile_idx] = True
 
@@ -150,8 +158,10 @@ class Vegetation:
 
         tile_x, tile_y = self.tile.in_map_position
         #total_moisture = np.sum(self.tile.world.pad_moisture_level_mat[self.moisutre_tile_idx])  # old inefficient computation
-        total_moisture = self.tile.world.moisture_level_mat[self.moisture_tile_mask].sum()  # still could be somehow optimized
-
+        #total_moisture = self.tile.world.moisture_level_mat[self.moisture_tile_mask].sum()  # still could be somehow optimized
+        total_moisture =  fast_sum(self.tile.world.pad_moisture_level_mat,
+                                   self.moisture_row_indices,
+                                   self.moisture_col_indices)
         self.moisture_buffer_value = total_moisture
 
         # C call implementation
@@ -240,8 +250,11 @@ class Cactus(Vegetation):
         """
         # TODO this is a time consuming function that should be optimized
         tile_x, tile_y = self.tile.in_map_position
-        total_moisture = self.tile.world.moisture_level_mat[
-            self.moisture_tile_mask].sum()  # still could be somehow optimized
+        # total_moisture = self.tile.world.moisture_level_mat[
+        #     self.moisture_tile_mask].sum()  # still could be somehow optimized
+        total_moisture =  fast_sum(self.tile.world.pad_moisture_level_mat,
+                                   self.moisture_row_indices,
+                                   self.moisture_col_indices)
         self.moisture_buffer_value = total_moisture
 
         has_neighbour_cactus = self._has_neighbouring_cactus()  # neighbouring cactuses kill each other

@@ -20,7 +20,7 @@ def eval_genome(genome, config):
         (creatures.Cow, neat_cow_agent, 6, {}),
     )
 
-    world = Terrain((10, 10 ),
+    world = Terrain((20, 20 ),
                     verbose=0,
                     generation_method='consistent_random',  # see other options in the description
                     steps_to_reset_world=10_000,
@@ -84,4 +84,4 @@ def train_neat_cow(checkpoint_name: str | None = None):
 
 if __name__ == '__main__':
 
-    train_neat_cow(checkpoint_name='neat-checkpoint-NEAT_Cow-10')
+    train_neat_cow()# checkpoint_name='neat-checkpoint-NEAT_Cow-10')
