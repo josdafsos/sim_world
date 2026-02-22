@@ -10,7 +10,7 @@ import random
 import warnings
 from collections import deque
 
-from agents.base_agents import MemoryFrameStack
+from agents.base_agents import MemoryFrameStack, RecurrentActions
 from graphics import graphics
 
 
@@ -118,6 +118,7 @@ class Creature:
             self.get_movement_difficulty = creature_to_copy.get_movement_difficulty
 
         self._memory_frame_stack: int = 1  # defines how many observation frame will be stacked
+        self._recurrent_actions_cnt: int = 0  #  if greater than 0, outputs of the actions will be added to the updated observations.
         self._observation_buffer = None  # for observations frame stacking
         # together and given to agent
         self._agent = None  # declaring _agent attribute, actual initialization is inside the setter function
@@ -143,7 +144,11 @@ class Creature:
         self.tile = tile
         self.world = self.tile.world
         #self.observation = self.get_current_obs()
-        self._update_obs()
+        if self._recurrent_actions_cnt > 0:
+            recurrent_obs = np.zeros(self._agent.model_outputs_cnt)  # model_outputs count is not standartaized yet. See RecurentNEAT cow impelmentation
+            self._update_obs(recurrent_obs)
+        else:
+            self._update_obs()
         self.on_rescale()  # if texture exists scaling it
 
     def set_agent(self, agent):
@@ -154,6 +159,8 @@ class Creature:
                 self._observation_buffer = deque(maxlen=self._memory_frame_stack)
                 for _ in range(self._memory_frame_stack):
                     self._observation_buffer.append(np.zeros((self.OBSERVATION_SPACE[0], )))
+            if isinstance(agent, RecurrentActions):
+                self._recurrent_actions_cnt = agent.recurrent_outputs_cnt
 
     def new_day(self) -> bool:
         """
@@ -217,16 +224,22 @@ class Creature:
                 self.apply_damage(1000)
                 break
 
-            action_idx = self._agent.predict(self.observation)
+            prediction = self._agent.predict(self.observation)
+            action_idx = prediction[0]
             action, action_option_number = self._action_mapping_tuple[action_idx]
             if self.verbose > 0:
                 print(f"action: {action.TYPE}, option number: ({action_option_number})")
             is_final_action = action.make_action(action_option_number, has_done_action)
             old_obs = self.observation
-            self._update_obs()
+
+            if self._recurrent_actions_cnt > 0:
+                self._update_obs(np.array(prediction))
+            else:
+                self._update_obs()
+
             new_obs = self.observation
 
-            self._agent.learn(old_obs, new_obs, np.array((action_idx,)), self._obs_metadata_dict)
+            self._agent.learn(old_obs, new_obs, np.array((action_idx, )), self._obs_metadata_dict)
             self.species_cnt_change = 0  # restoring the indication of death/birth
             has_done_action = True
 
@@ -341,155 +354,21 @@ class Creature:
         self._obs_metadata_dict = {}
         return obs
 
-    def _update_obs(self) -> None:
+    def _update_obs(self, recurrent_obs = None) -> None:
         """
         Updates self.observation variable, implements frame stack and other observation processings,
         but normalization
+
+        :param recurrent_obs ndArray containing recurrent layer of a policy output
         :return:
         """
+
         if self._memory_frame_stack == 1:
             self.observation = self.get_current_obs()
         else:
             self._observation_buffer.append(np.array(self.get_current_obs()))
-            self.observation = np.concatenate(self._observation_buffer)
+            self.observation = np.concatenate(self._observation_buffer)  # TODO is that a correct usage here?
+            # seems that the current observation is not considered
 
-
-#
-# old action implementation
-#
-#     def _attack(self, other_creature):
-#         own_attack = self.species_cnt * self.SINGLE_CREATURE_STRENGTH
-#         other_attack = other_creature.species_cnt * other_creature.SINGLE_CREATURE_STRENGTH
-#         min_damage = 0.1  # for some reason an attack can deal a negative damage, idk why
-#         own_attack = max(min_damage, own_attack)
-#         other_attack = max(min_damage, other_attack)
-#
-#         self.apply_damage(other_attack)
-#         other_creature.apply_damage(own_attack)
-#         if self.verbose > 0:
-#             print(
-#                 f"Creature {self}, cnt={self.species_cnt} attacks \n {other_creature}, cnt={other_creature.species_cnt} "
-#                 f"corresponding damage {own_attack} and {other_attack}")
-#
-#         self.consume_food(0.5)
-#         other_creature.consume_food(0.25)
-#         self.movement_points -= 1.0
-#
-#     def _eat(self, relative_tile_pos: tuple[int, int]):
-#
-#         if relative_tile_pos == (0, 0):
-#             self.movement_points -= 1.0
-#         else:
-#             self.movement_points -= 2.0
-#         tile_to_eat = self.tile.world.get_tile_by_index(self.tile.in_map_position, relative_tile_pos)
-#         has_eaten_food = tile_to_eat.eat_from_tile(self.CONSUMABLE_FOOD_TYPES)
-#
-#         if self.verbose > 0:
-#             print(f"eating at {relative_tile_pos}, success = {has_eaten_food}")
-#         if has_eaten_food:
-#             self.current_food = min(self.current_food + 5.0, self.MAX_FOOD_SUPPLY)
-#         else:
-#             self.consume_food(0.05)
-#
-#     def _sleep(self, has_done_action):
-#         if has_done_action:
-#             if self.verbose > 0:
-#                 print("sleeping... Cannot sleep as an action has already been made")
-#             self.consume_food(0.005, enable_heal=False)  # small penalty for making restricted action
-#             return
-#         if self.verbose > 0:
-#             print("sleeping...")
-#         self.consume_food(0.05, enable_heal=True)
-#         self.movement_points = self.MAX_MOVEMENT_POINTS
-#
-#     def _split_or_attack(self, relative_tile_pos: tuple[int, int]):
-#         """ If tile is empty splits half of the creature on the new tile. Otherwise attacks ANY creature on the tile"""
-#         if relative_tile_pos == (0, 0):  # no action is reserved for splitting into own tile
-#             self.current_food -= 0.05
-#             self.movement_points -= 0.1
-#             return
-#
-#         new_tile = self.world.get_tile_by_index(self.tile.in_map_position, relative_tile_pos)
-#         other_creature = self.world.get_creature_on_tile(new_tile)
-#         # if self is other_creature:  # checking if the creature attacks itself
-#         #     if self.verbose > 0:
-#         #         print("suicide attempt (creature is trying to attack itself")
-#         #     other_creature = None
-#
-#         if other_creature is None:
-#             if self.species_cnt > 1:
-#                 self.current_food -= 0.05  # subtracted from both creatures
-#                 self.movement_points -= 1.0
-#
-#                 new_creature = self.__class__(self._agent,
-#                                               self.tile,
-#                                               texture=self.texture,
-#                                               verbose=self.verbose,
-#                                               creature_to_copy=self)
-#
-#                 remaining_species_cnt = self.species_cnt // 2
-#                 moved_species_cnt = self.species_cnt - remaining_species_cnt
-#                 new_creature.set_tile(new_tile)
-#                 new_creature.species_cnt = moved_species_cnt
-#                 self.species_cnt = remaining_species_cnt
-#                 new_creature_position = (self.tile.in_map_position[0] + relative_tile_pos[0],
-#                                          self.tile.in_map_position[1] + relative_tile_pos[1])
-#                 self.world.add_creature(new_creature, new_creature_position)
-#             else:
-#                 self.current_food -= 0.05
-#                 self.movement_points -= 0.1
-#         else:
-#             self._attack(other_creature)  # attack already consumes food and movement
-#
-#     def _move(self, relative_tile_pos: tuple[int, int]):
-#
-#         if self.verbose > 0:
-#             print(f"moving to {relative_tile_pos}")
-#         # new_row = self.tile.in_map_position[0] + relative_tile_pos[0]
-#         # new_col = self.tile.in_map_position[1] + relative_tile_pos[1]
-#         new_tile = self.world.get_tile_by_index(self.tile.in_map_position, relative_tile_pos)
-#         # required_movement = self._get_movement_difficulty(new_tile)
-#         required_movement = self.get_movement_difficulty(self.tile, new_tile)
-#         if self.movement_points < required_movement * 0.5:  # attempt to make illegal move
-#             self.consume_food(0.01)  # small penalty
-#
-#         other_creature = self.world.get_creature_on_tile(new_tile)
-#         if other_creature is None:
-#             self.tile = new_tile  # don't use set_tile function here because it will update obs twice and do unnecessary rescale
-#             self.movement_points = max(0.0, self.movement_points - required_movement)
-#             self.consume_food(required_movement / 20.0)
-#         else:
-#
-#             if other_creature.CREATURE_ID == self.CREATURE_ID:
-#                 if self.species_cnt == self.MAX_SPECIES_CNT or other_creature == self.MAX_SPECIES_CNT:
-#                     self.consume_food(0.005)
-#                     self.movement_points -= 0.1
-#                 if self.species_cnt + other_creature.species_cnt <= self.MAX_SPECIES_CNT:  # creatures fully merge
-#                     other_creature.species_cnt += self.species_cnt
-#                     self.movement_points = 0.0  # to block any further action
-#                     self.world.remove_creature(self)
-#                 else:
-#                     remaining_species = self.species_cnt + other_creature.species_cnt - self.MAX_SPECIES_CNT
-#                     other_creature.species_cnt = self.MAX_SPECIES_CNT
-#                     self.species_cnt = remaining_species
-#                     self.consume_food(0.05)
-#                     self.movement_points -= 0.5
-#             else:
-#                 self._attack(other_creature)  # attack already consumes food and movement
-#
-#     def _action_to_idx(self, action):
-#         """ Converts a complex action structure into its index """
-#         (xy, z) = action  # converting action back to index
-#         x, y = xy
-#         x += 1
-#         y += 1
-#         action_idx = x * 9 + y * 3 + z
-#         return np.array([action_idx])
-#
-#     def _idx_to_action(self, action_idx):
-#         """ Converts action's index into a complex action structure """
-#         x, y, action = self.actions[action_idx]  # self.actions[action_idx]
-#         return ((x, y), action)
-#
-
-
+        if self._recurrent_actions_cnt > 0:
+            self.observation = np.concatenate((self.observation , recurrent_obs))

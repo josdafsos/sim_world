@@ -12,6 +12,7 @@ from creatures import Creature
 from agents.agents import Agent
 import tile_items
 from tile_items import TileItem
+import utils
 
 # Define neighborhood shifts, used for computations of neighboring tiles effects
 # shifts = ((-1, 1), (0, 1), (1, 1),
@@ -218,19 +219,25 @@ class Terrain:
         # TODO probably a list of tiles containing vegetation would be a simpler solution than a list of all vegetation
         for x, y in vegetation_idx:
             tile = self.terrain_map[x][y]
-            for key in list(tile.vegetation_dict.keys()):  # TODO seems to consume too much time. Find another way to iterate + ocasional delete
-                # one plant can delete another in the middle of this cycle
-                # that's why the key validation condition is needed
-                if key in tile.vegetation_dict:
-                    tile.vegetation_dict[key].prepare_step_vegetation()
+            for vegetable in tile.vegetation_list:
+                if vegetable is not None:
+                    vegetable.prepare_step_vegetation()
+            # for key in list(tile.vegetation_dict.keys()):  # TODO seems to consume too much time. Find another way to iterate + ocasional delete
+            #     # one plant can delete another in the middle of this cycle
+            #     # that's why the key validation condition is needed
+            #     if key in tile.vegetation_dict:
+            #         tile.vegetation_dict[key].prepare_step_vegetation()
 
     def step_vegetation_mat(self):
         vegetation_idx = np.argwhere(self.vegetation_presence_map > 0.5)  # indexes of all tiles with vegetation
         # TODO same comment as for prepare step - create and modify single vegetation list instead of re-creating it on each loop
         for x, y in vegetation_idx:
             tile = self.terrain_map[x][y]
-            for key in list(tile.vegetation_dict.keys()):  # TODO the list generation here takes a lot of time
-                tile.vegetation_dict[key].step_vegetation()
+            for vegetable in tile.vegetation_list:
+                if vegetable is not None:
+                    vegetable.step_vegetation()
+            # for key in list(tile.vegetation_dict.keys()):  # TODO the list generation here takes a lot of time
+            #     tile.vegetation_dict[key].step_vegetation()
 
     def step_water_mat(self):
         """ Computes water physics """
@@ -446,8 +453,9 @@ class Terrain:
                 creature.on_rescale()  # changing texture sizes
             vegetation_idx = np.argwhere(self.vegetation_presence_map > 0.5)  # indexes of all tiles with vegetation
             for x, y in vegetation_idx:
-                for key in self.terrain_map[x][y].vegetation_dict:
-                    self.terrain_map[x][y].vegetation_dict[key].on_rescale()
+                for veg_item in self.terrain_map[x][y].vegetation_list:
+                    if veg_item is not None:
+                         veg_item.on_rescale()
 
             # TODO also rescale texture for tiles (texturing is not implemented there yet)
 
@@ -550,7 +558,7 @@ class Water:
 
         absorption_level = self.absorption_coeff * (1 - 0.95 * self.tile.height_level)  # the higher tile, the smaller absorbtion
 
-        if self.tile.vegetation_dict:  # presence of vegetation_dict reduces water  absorption
+        if self.tile.world.vegetation_presence_map[self.tile.in_map_position] > 1e-4:  # presence of vegetation_dict reduces water  absorption
             absorption_level *= 0.5
 
         self.moisture_level += self.source_intensity
@@ -659,7 +667,8 @@ class Tile:
         self.modifiers: list = []
         self.surround_tiles_dict: dict = {}
         self.in_map_position: tuple[int, int] = in_map_position  # (row, col) indexes of the tile in the world
-        self.vegetation_dict: dict = {}  # str type : instance  TODO should it be replaced with a collection that holds vegetation groups?
+        # self.vegetation_dict: dict = {}  # str type : instance  TODO should it be replaced with a collection that holds vegetation groups?
+        self.vegetation_list: list[vegetation.Vegetation, ...] = utils.VEGETATION_LIST.copy()
         # self.dead_cnt: int = 0  # number of dead bodies on the tile
         # self.dead_creature: Creature | None = None  # temporary variable, will be used for drawing mostly
         self.nutrition = 0
@@ -762,8 +771,12 @@ class Tile:
         """
         has_vegetation = False
         existing_plant_key = None
+        if self.world.vegetation_presence_map[self.in_map_position] < 1e-4:
+            return has_vegetation, existing_plant_key
         for plant in vegetation_list:
-            if plant in self.vegetation_dict:
+            tile_vegetation = self.vegetation_list[utils.plant_group_index_mapping_dict[
+                utils.plant_type_group_mapping_dict[plant]]]
+            if tile_vegetation is not None and tile_vegetation.TYPE == plant:
                 has_vegetation = True
                 existing_plant_key = plant
                 break
@@ -778,10 +791,10 @@ class Tile:
         """
         has_vegetation = False
         existing_plant_key = None
-        for key in self.vegetation_dict:
-            if self.vegetation_dict[key].GROUP in vegetation_group_list:
+        for group in vegetation_group_list:
+            if self.vegetation_list[utils.plant_group_index_mapping_dict[group]] is not None:
                 has_vegetation = True
-                existing_plant_key = key
+                existing_plant_key = group
                 break
 
         return has_vegetation, existing_plant_key
@@ -791,8 +804,9 @@ class Tile:
         if not has_vegetation:
             return False
 
-        del self.vegetation_dict[plant_key]
-        self.world.update_vegetation_presence(self.in_map_position, 0.0)
+        # del self.vegetation_dict[plant_key]
+        self.vegetation_list[utils.plant_group_index_mapping_dict[plant_key]]._delete_plant()
+        #self.world.update_vegetation_presence(self.in_map_position, 0.0)
         return True
 
     def has_meat(self) -> bool:
@@ -967,8 +981,9 @@ class Tile:
         for item in self.all_items_dict.values():  # TODO draw items according to their drawing priority
             item.draw(screen, pos)
 
-        for plant in self.vegetation_dict.values():  # iteration is due to multiple kinds of plants
-            plant.draw(screen, pos, width, height_scale, height_pos)
+        for plant in self.vegetation_list:  # iteration is due to multiple kinds of plants
+            if plant is not None:
+                plant.draw(screen, pos, width, height_scale, height_pos)
 
 
 

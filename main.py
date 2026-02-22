@@ -50,13 +50,13 @@ def game_run():
     dqn_cow_agent = agents.DQNCow(verbose=0,
                                   epsilon=(1.0, 0.075, int(2e6)),
                                   agent_version="new_agent")
-    neat_cow_agent = agents.NeatCow(model_name='neat-checkpoint-NEAT_Cow-10')
+    neat_cow_agent = agents.NeatCow(model_name='neat-checkpoint-NEAT_Cow-1250')
     # memory_wolf_agent = agents.DQNMemoryWolf(verbose=1)
 
     # following creatures will be monitored in the world and respawn if their count is lower that the threshold
     creatures_to_respawn = (
         # (creatures.Cow, random_cow_agent, 6),
-        (creatures.Cow, neat_cow_agent, 6, {'verbose': 2}),
+        (creatures.Cow, neat_cow_agent, 6, {'verbose': 0}),
         # (creatures.Cow, neat_cow_agent, 6, {}),
         # (creatures.Wolf, memory_wolf_agent, 6),
     )
@@ -65,7 +65,7 @@ def game_run():
                             screen=screen,
                             verbose=0,
                             generation_method='consistent_random',  # see other options in the description
-                            steps_to_reset_world=10_000,
+                            #steps_to_reset_world=10_000,
                             creatures_to_respawn=creatures_to_respawn,
                             )
     world.camera_fit_view()
@@ -116,7 +116,7 @@ if __name__ == '__main__':
         profiler.enable()
 
     game_run()
-    #computation_benchmarking()
+    # computation_benchmarking()
 
     if count_execution_time:
         profiler.disable()

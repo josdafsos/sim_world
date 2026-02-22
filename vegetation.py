@@ -3,6 +3,7 @@ import pygame
 import numpy as np
 from numba import njit
 
+import utils
 from graphics import graphics
 import _world_logic
 
@@ -31,9 +32,10 @@ class Vegetation:
     # Original 0.2, but lower might be more realistic at a big matp
     MASS: float = 1.0  # mass of a single plant (assumed in kg, kinda). Used in interactions with vegetation. # TODO implement
 
-    TYPE = "base class"  # type is a unique identifier of a class
-    GROUP = "base class group"  # group is an identifier of a collection of vegetation types, such as
+    TYPE: str = "base class"  # type is a unique identifier of a class
+    GROUP: str = "base class group"  # group is an identifier of a collection of vegetation types, such as
     # various types of grass or trees
+    PLANT_INDEX_MAPPING: int = utils.plant_group_index_mapping_dict[GROUP]
 
     def __init__(self,
                  self_tile,
@@ -103,10 +105,11 @@ class Vegetation:
         :param tile: tile to verify
         :return: True if a plant of the same group already exists on a tile, otherwise returns False
         """
-        for plant in tile.vegetation_dict.values():
-            if plant.GROUP == self.GROUP and plant.TYPE != self.TYPE:
-                return True
-        return False
+        return tile.vegetation_list[self.PLANT_INDEX_MAPPING] is not None  # TODO uncomment
+        # for plant in tile.vegetation_dict.values():
+        #     if plant.GROUP == self.GROUP and plant.TYPE != self.TYPE:
+        #         return True
+        # return False
 
     def plant(self, tile, growing_power=-1.0) -> None:
         """
@@ -116,11 +119,22 @@ class Vegetation:
         """
         tile.world.update_vegetation_presence(tile.in_map_position, 1.0)  # Marking vegetation presence on the global map
 
-        if self.TYPE not in tile.vegetation_dict:  # creating a new instance if it did not exist
-            if self._check_same_group_exist(tile):  # blocking growth of same vegetation group on the same tile
+        if self._check_same_group_exist(tile):
+            if self.TYPE != tile.vegetation_list[self.PLANT_INDEX_MAPPING].TYPE:  # blocking growth of same vegetation group on the same tile
                 return
-            tile.vegetation_dict[self.TYPE] = self.__class__(tile, texture=self.texture, must_be_planted=False)
-        vegetation = tile.vegetation_dict[self.TYPE]
+        else:
+             # creating a new instance if it did not exist
+            #tile.vegetation_dict[self.TYPE] = self.__class__(tile, texture=self.texture, must_be_planted=False)
+            tile.vegetation_list[self.PLANT_INDEX_MAPPING] = self.__class__(tile, texture=self.texture, must_be_planted=False)
+
+        # before refactoring
+        # if self.TYPE not in tile.vegetation_dict:  # creating a new instance if it did not exist
+        #     if self._check_same_group_exist(tile):  # blocking growth of same vegetation group on the same tile
+        #         return
+        #     tile.vegetation_dict[self.TYPE] = self.__class__(tile, texture=self.texture, must_be_planted=False)
+
+        #vegetation = tile.vegetation_dict[self.TYPE]
+        vegetation = tile.vegetation_list[self.PLANT_INDEX_MAPPING]
 
         if vegetation.size < 0:
             vegetation.size = self.MIN_NEW_PLANT_SIZE + random.random() * 0.5
@@ -131,14 +145,22 @@ class Vegetation:
                                  1 + int(random.random() * 0.1 * growing_power))
         vegetation.count += new_plants_cnt
 
-    def _delete_plant(self):
+    def _delete_plant(self):  # TODO this function should not be protected as it is used outside
         """
         Deletion of the plant instance from corresponding tile
         """
-        if self.TYPE in self.tile.vegetation_dict:  # for some reason during evolution an error emerges here
-            del self.tile.vegetation_dict[self.TYPE]
-        if not self.tile.vegetation_dict:  # checking if the tile is completely free of vegetation
-            self.tile.world.update_vegetation_presence(self.tile.in_map_position, 0.0)
+        self.tile.vegetation_list[self.PLANT_INDEX_MAPPING] = None
+        for plant in self.tile.vegetation_list:
+            if plant is not None:
+                return
+        self.tile.world.update_vegetation_presence(self.tile.in_map_position, 0.0)
+        # if self.TYPE in self.tile.vegetation_dict:  # for some reason during evolution an error emerges here
+        #     del self.tile.vegetation_dict[self.TYPE]
+        # if not self.tile.vegetation_dict:  # checking if the tile is completely free of vegetation
+        #     self.tile.world.update_vegetation_presence(self.tile.in_map_position, 0.0)
+
+        # TODO refactor vegetation_presence matrix to INT values, add 1 when a new plant is created,
+        #  and subtract one when a plant dies. It will be faster than looping though palnts
 
     def clear_dead_plants(self):
         # removing plants with size less than minimal required for life
@@ -183,7 +205,6 @@ class Vegetation:
         # self.size = min(self.size, 1)
 
     def prepare_step_vegetation(self):
-
         self._compute_plant_growth()
         self.clear_dead_plants()
 
@@ -223,6 +244,7 @@ class Cactus(Vegetation):
     MASS = 20
     TYPE = "cactus"
     GROUP = "grass"
+    PLANT_INDEX_MAPPING = utils.plant_group_index_mapping_dict[GROUP]
     MAX_MOISTURE_REQUIRED: float = 1e-3  # cactus starts to die if there is too much moisture around
     PLANTING_PROBABILITY_COEFF = 0.025
 
@@ -239,7 +261,7 @@ class Cactus(Vegetation):
         :return: True if in a radius of one another cactus is presented
         """
         for tile in self.tile.get_surrounding_tile("1"):
-            if self.TYPE in tile.vegetation_dict:
+            if tile.has_vegetation([self.TYPE]):
                 return True
         return False
 
@@ -327,6 +349,7 @@ class Grass(Vegetation):
     MASS = 10
     TYPE = "grass"
     GROUP = "grass"
+    PLANT_INDEX_MAPPING = utils.plant_group_index_mapping_dict[GROUP]
 
     def __init__(self, self_tile, texture=(0, 120, 0), **kwargs):
         super().__init__(self_tile,

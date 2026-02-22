@@ -15,7 +15,7 @@ class Graphics:
         # --- Initialize pygame ---
         self.screen = None
         pygame.init()
-        self.WIDTH, self.HEIGHT = 600, 600  # window size
+        self.WIDTH, self.HEIGHT = 800, 800  # window size
 
 
         # --- Other ---

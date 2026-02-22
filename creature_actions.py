@@ -127,7 +127,7 @@ class Move(Action):
         """
         relative_tile_pos = self.TILE_POS_ACTION_MAPPING[action_number]
         if self.creature.verbose > 0:
-            print(f"moving to {relative_tile_pos}")
+            print(f"Moving from {self.creature.tile.in_map_position} to offset {relative_tile_pos}")
         # new_row = self.tile.in_map_position[0] + relative_tile_pos[0]
         # new_col = self.tile.in_map_position[1] + relative_tile_pos[1]
         new_tile = self.creature.world.get_tile_by_index(self.creature.tile.in_map_position, relative_tile_pos)
@@ -135,28 +135,32 @@ class Move(Action):
         required_movement = self.creature.get_movement_difficulty(self.creature.tile, new_tile)
         if self.creature.movement_points < required_movement * 0.5:  # attempt to make illegal move
             self.creature.consume_food(0.01)  # small penalty
+            if self.creature.verbose > 0:
+                print(f"Insufficient movement points, available: {self.creature.movement_points}, "
+                      f"required: {required_movement}")
             return True
 
         other_creature = self.creature.world.get_creature_on_tile(new_tile)
         if other_creature is None:
             self.creature.tile = new_tile  # don't use set_tile function here because it will update obs twice and do unnecessary rescale
-            # TODO is it actually correct that observations must not be updated here?
             self.creature.movement_points = max(0.0, self.creature.movement_points - required_movement)
             self.creature.consume_food(required_movement / 20.0)
             if self.creature.verbose > 0:
-                print(f"moving to empty tile")
+                print(f"Successfully moved to an empty tile")
         else:
 
             if other_creature.CREATURE_ID == self.creature.CREATURE_ID:
                 if self.creature.species_cnt == self.creature.MAX_SPECIES_CNT or other_creature == self.creature.MAX_SPECIES_CNT:
                     self.creature.consume_food(0.005)
                     self.creature.movement_points -= 0.1
+                    if self.creature.verbose > 0:
+                        print(f"Cannot move as the target tile is fully occupied by same unit type")
                 if self.creature.species_cnt + other_creature.species_cnt <= self.creature.MAX_SPECIES_CNT:  # creatures fully merge
                     other_creature.species_cnt += self.creature.species_cnt
                     self.creature.movement_points = 0.0  # to block any further action
                     self.creature.world.remove_creature(self.creature)
                     if self.creature.verbose > 0:
-                        print(f"moving to occupied tile, and fully merging with existing creature")
+                        print(f"moving to an occupied tile, and fully merging with existing creature")
 
                     return True
                 else:
@@ -169,6 +173,8 @@ class Move(Action):
                         print(f"moving to occupied tile, and partially merging with existing creature")
             else:
                 action_attack(self.creature, other_creature)  # attack already consumes food and movement
+                if self.creature.verbose > 0:
+                    print(f"Attacking an other creature type")
 
         return False
 

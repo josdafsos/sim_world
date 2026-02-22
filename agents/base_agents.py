@@ -6,6 +6,8 @@ This module contains base classes for agents implementation.
 
 import os
 import random
+import pickle
+
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -13,7 +15,7 @@ from stable_baselines3 import DQN
 from stable_baselines3.common import logger
 import gymnasium as gym
 import torch
-
+import neat
 import utils
 
 
@@ -82,6 +84,22 @@ class MemoryFrameStack:
 
     def get_memory_frame_stack_length(self):
         return self._memory_frame_stack_length
+
+
+class RecurrentActions:
+    """
+    Classed used as an indicator that outputs of an agent must be saved to agent's observations.
+    """
+
+    def __init__(self, recurrent_outputs_cnt: int):
+        """
+        :param recurrent_outputs_cnt integer number of recurrent outputs
+        """
+
+        super().__init__()
+        self.recurrent_outputs_cnt = recurrent_outputs_cnt
+        self.observation_space = (self.observation_space[0] + recurrent_outputs_cnt,)
+
 
 
 class Observable:
@@ -271,7 +289,7 @@ class DQNBaseClass(Agent, Observable):
                 self.max_epsilon_steps = None
 
         self._steps_done += 1
-        return action_idx
+        return [action_idx]
 
     def learn(self, old_obs, new_obs, action, metadata: dict = {}):
         if not self.learning_enabled:
@@ -298,7 +316,7 @@ class EvolBaseClass(Agent, Observable):
 
     def __init__(self,
                  creature_cls_or_operation_space,
-                 learning_enabled: bool = True,
+                 learning_enabled: bool,
                  *args, **kwargs):
         """
         :param creature_cls_or_operation_space: class of a creature to be controlled by the agent. Use to automatically get
@@ -328,3 +346,62 @@ class EvolBaseClass(Agent, Observable):
 
         self.sum_reward += reward
         self.sum_steps += 1
+
+
+class NeatBaseAgent(EvolBaseClass):
+    """
+    Base class for any Neat Agent
+    """
+
+    AGENT_NAME = "NEAT_Base_Agent"
+    CONFIG_PATH: str = os.path.join(os.path.dirname(__file__), "config_neat_cow")
+    SAVE_PATH = os.path.join(os.path.dirname(__file__), 'neat_agents')
+
+
+    @classmethod
+    def load_model(cls, model_name: str):
+        """
+        Function returns neat network, otherwise returns None
+        """
+        save_name = os.path.join(cls.SAVE_PATH, model_name)
+        config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                             neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                             cls.CONFIG_PATH)
+
+        if 'checkpoint' in model_name:  # Restoring model from checkpoint
+            pop = neat.Checkpointer.restore_checkpoint(save_name)
+            valid_genomes = [
+                g for g in pop.population.values()
+                if g.fitness is not None
+            ]
+            best_genome = max(valid_genomes, key=lambda g: g.fitness)
+            net = neat.nn.FeedForwardNetwork.create(best_genome, config)
+            return net
+
+        with open(save_name, 'rb') as f:
+                winner = pickle.load(f)
+        # print(winner)
+        net = neat.nn.FeedForwardNetwork.create(winner, config)
+        return net
+
+    def __init__(self,
+                 creature_cls_or_operation_space,
+                 model=None,
+                 model_name: str | None = None,
+                 learning_enabled: bool = True,
+                 *args, **kwargs):
+        """
+        :param model - processed neat network. If None, model will be loaded from model_name param
+        :param model_name - Name of the model in the save folder, without specified path
+        """
+        super().__init__(creature_cls_or_operation_space,
+                         learning_enabled = learning_enabled,
+                   *args,
+                         **kwargs)
+
+        if model_name is not  None:
+            self.model = self.load_model(model_name)
+        elif model is not None:
+            self.model = model
+        else:
+            raise "Error loading Neat agent. Both model and model_path are not given. At least one parameter must be not None"

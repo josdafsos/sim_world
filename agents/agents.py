@@ -2,11 +2,11 @@
 
 import random
 import math
-import neat
-import os
-import pickle
 
-from agents.base_agents import Agent, DQNBaseClass, MemoryFrameStack, EvolBaseClass
+import os
+
+
+from agents.base_agents import *
 import creatures
 
 
@@ -19,7 +19,7 @@ class RandomCow(Agent):
 
         #action = ((random.randint(-1, 1), random.randint(-1, 1)), random.randint(0, 2))
         action = random.randint(0, self.action_space - 1)
-        return action
+        return [action]
 
     def learn(self, old_obs, new_obs, action, metadata) -> None:
         """ It never learns anything"""
@@ -106,60 +106,31 @@ class DQNMemoryWolf(MemoryFrameStack, DQNBaseClass):
         return reward
 
 
-class NeatCow(EvolBaseClass):
+class NeatCow(NeatBaseAgent):
 
     CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config_neat_cow")
     SAVE_PATH = os.path.join(os.path.dirname(__file__), 'neat_agents')
     AGENT_NAME = "NEAT_Cow"
-
-    @staticmethod
-    def load_model(model_name: str):
-        """
-        Function returns neat network, otherwise returns None
-        """
-        save_name = os.path.join(NeatCow.SAVE_PATH, model_name)
-        config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
-                             neat.DefaultSpeciesSet, neat.DefaultStagnation,
-                             NeatCow.CONFIG_PATH)
-
-        if 'checkpoint' in model_name:  # Restoring model from checkpoint
-            pop = neat.Checkpointer.restore_checkpoint(save_name)
-            valid_genomes = [
-                g for g in pop.population.values()
-                if g.fitness is not None
-            ]
-            best_genome = max(valid_genomes, key=lambda g: g.fitness)
-            net = neat.nn.FeedForwardNetwork.create(best_genome, config)
-            return net
-
-        with open(save_name, 'rb') as f:
-                winner = pickle.load(f)
-        # print(winner)
-        net = neat.nn.FeedForwardNetwork.create(winner, config)
-        return net
 
     def __init__(self, model=None, model_name: str | None = None):
         """
         :param model - processed neat network. If None, model will be loaded from model_name param
         :param model_name - Name of the model in the save folder, without specified path
         """
-        super().__init__(creature_cls_or_operation_space=creatures.Cow)
-        if model_name is not  None:
-            self.model = NeatCow.load_model(model_name)
-        elif model is not None:
-            self.model = model
-        else:
-            raise "Error loading Neat agent. Both model and model_path are not given. At least one parameter must be not None"
+        super().__init__(creature_cls_or_operation_space=creatures.Cow,
+                         model=model,
+                         model_name=model_name)
 
     def _compute_reward(self, old_obs, new_obs, action, metadata={}):
         extra_penalty = 0
         extra_bonus = 0
         if metadata["species_cnt_change"] > 0:
-            extra_bonus += 2
+            extra_bonus += metadata["species_cnt_change"]
         # extra_bonus += 5 * int(new_obs[4] > 2)  # extra reward for staying together
         # extra_penalty += 1 * int(new_obs[4] < 0.2)  # small penalty for walking alone to avoid unnecessary splits,
-        extra_penalty += 2 * int(metadata["species_cnt"] < 1)  # if zero creatures left, it is dead and extra penalty for it
-        reward = metadata["species_cnt_change"] - extra_penalty + extra_bonus  # species_cnt_change value
+        # extra_penalty += 2 * int(metadata["species_cnt"] < 1)  # if zero creatures left, it is dead and extra penalty for it
+        # reward = metadata["species_cnt_change"] - extra_penalty + extra_bonus  # species_cnt_change value
+        reward = extra_bonus
 
         return reward
 
@@ -167,6 +138,46 @@ class NeatCow(EvolBaseClass):
         action = self.model.activate(obs)[0]
         # single output continuous action is mapped to integer value
         action_idx = round((self.action_space - 1) * (math.tanh(action*2) + 1) / 2)
-        print(f"idx: {action_idx}")
-        return action_idx
+        #print(f"idx: {action_idx}")
+        return [action_idx]
 
+
+class RecurrentNeatCow(NeatBaseAgent, RecurrentActions):
+
+    CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config_recurrent_neat_cow")
+    SAVE_PATH = os.path.join(os.path.dirname(__file__), 'neat_agents')
+    AGENT_NAME = "Recurrent_NEAT_Cow"
+
+    def __init__(self, model=None, model_name: str | None = None):
+        """
+        :param model - processed neat network. If None, model will be loaded from model_name param
+        :param model_name - Name of the model in the save folder, without specified path
+        """
+
+        NeatBaseAgent.__init__(self, creature_cls_or_operation_space=creatures.Cow,
+                         model=model,
+                         model_name=model_name)
+
+        RecurrentActions.__init__(self, recurrent_outputs_cnt = 9)
+        self.model_outputs_cnt = 10
+
+
+    def _compute_reward(self, old_obs, new_obs, action, metadata={}):
+        extra_penalty = 0
+        extra_bonus = 0
+        if metadata["species_cnt_change"] > 0:
+            extra_bonus += metadata["species_cnt_change"]
+        # extra_bonus += 5 * int(new_obs[4] > 2)  # extra reward for staying together
+        # extra_penalty += 1 * int(new_obs[4] < 0.2)  # small penalty for walking alone to avoid unnecessary splits,
+        # extra_penalty += 2 * int(metadata["species_cnt"] < 1)  # if zero creatures left, it is dead and extra penalty for it
+        # reward = metadata["species_cnt_change"] - extra_penalty + extra_bonus  # species_cnt_change value
+        reward = extra_bonus
+
+        return reward
+
+    def predict(self, obs) -> int:
+        action = self.model.activate(obs)
+        # single output continuous action is mapped to integer value
+        action_idx = round((self.action_space - 1) * (math.tanh(action[0]*2) + 1) / 2)
+        #print(f"idx: {action_idx}")
+        return [action_idx] + action[1:]
